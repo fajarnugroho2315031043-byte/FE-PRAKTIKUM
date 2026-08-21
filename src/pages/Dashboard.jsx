@@ -64,7 +64,7 @@ export default function Dashboard() {
       {/* --- SIDEBAR (DESKTOP) DENGAN FITUR COLLAPSE/MINIMIZE --- */}
       <aside className={`bg-white border-r border-gray-100 flex-shrink-0 hidden md:flex flex-col justify-between z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
         <div>
-          {/* Logo Area & Toggle Button (Dinaikkan py-5 agar sejajar) */}
+          {/* Logo Area & Toggle Button */}
           <div className="flex items-center justify-between px-6 py-5">
             <div className="flex items-center gap-3 overflow-hidden">
               <img src={logo} alt="Logo FermaSense" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
@@ -84,7 +84,7 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Menu Navigasi (Dinaikkan marginnya) */}
+          {/* Menu Navigasi */}
           <nav className="mt-1 flex flex-col gap-1">
             <SidebarItem icon={Home} label="Beranda" path="/" activePath={currentPath} isCollapsed={isCollapsed} />
             
@@ -101,7 +101,7 @@ export default function Dashboard() {
           </nav>
         </div>
 
-        {/* Widget Status Sistem di Bawah Sidebar Asli (Tanpa Gambar Keranjang) */}
+        {/* Widget Status Sistem di Bawah Sidebar */}
         {!isCollapsed && (
           <div className="p-6">
             <div className="bg-[#fcfcfb] rounded-2xl p-4 border border-gray-100">
@@ -116,7 +116,7 @@ export default function Dashboard() {
       </aside>
 
       {/* --- KONTEN UTAMA --- */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+      <main className="flex-1 flex flex-1 flex-col h-screen overflow-hidden relative">
         
         {/* HEADER TOP BAR */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-6 lg:px-10 z-10 flex-shrink-0">
@@ -158,7 +158,7 @@ export default function Dashboard() {
             variants={staggerContainer}
             className="max-w-6xl mx-auto space-y-8"
           >
-            {/* Kartu Ringkasan (Top Stats) */}
+            {/* Kartu Ringkasan */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
                 { title: "Sistem Berjalan", value: "3", desc: "Kombucha, Eco, Fruit", icon: LayoutDashboard, color: "text-green-600", bg: "bg-green-50" },
