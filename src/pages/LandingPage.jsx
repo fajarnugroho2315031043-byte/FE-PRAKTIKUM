@@ -6,15 +6,17 @@ import {
   Target, Hand, Lock, ShieldCheck, MapPin, Phone, ArrowRight
 } from 'lucide-react';
 
+// Import Gambar disesuaikan dengan Kapitalisasi Asli di Folder Assets
 import logo from '../assets/LOGO.png';
 import heroImage from '../assets/hero-kombucha.png';
-import keranjangImage from '../assets/keranjang.png';
-import kombuchaImage from '../assets/kombucha.png';
+import keranjangImage from '../assets/Keranjang.png';
+import kombuchaImage from '../assets/Kombucha.png';
 import ecoEnzymeImage from '../assets/eco-enzyme.png';
 import fruitEnzymeImage from '../assets/fruit-enzyme.png';
 
 // =====================================================================
-
+// ANIMASI
+// =====================================================================
 const fadeInUp = {
   hidden: { opacity: 0, y: 30 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
@@ -25,7 +27,7 @@ const staggerContainer = {
   visible: { opacity: 1, transition: { staggerChildren: 0.15 } }
 };
 
-// Dekorasi daun mengambang - murni hiasan, aman diabaikan/diedit
+// Hiasan daun mengambang
 function FloatingLeaf({ className = "", delay = 0, duration = 6, rotate = -10, size = 34 }) {
   return (
     <motion.svg
@@ -41,7 +43,7 @@ function FloatingLeaf({ className = "", delay = 0, duration = 6, rotate = -10, s
   );
 }
 
-// Ikon sosial - bentuk generik sederhana, boleh diganti dengan aset/logo resmi
+// Ikon sosial media
 function SocialIcon({ type }) {
   const common = { width: 16, height: 16, viewBox: "0 0 24 24" };
   if (type === "facebook") {
@@ -67,6 +69,9 @@ function SocialIcon({ type }) {
   );
 }
 
+// =====================================================================
+// KOMPONEN UTAMA LANDING PAGE
+// =====================================================================
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-x-hidden">
@@ -394,7 +399,6 @@ export default function LandingPage() {
       <footer id="kontak" className="max-w-7xl mx-auto px-6 md:px-16 pt-10 pb-12 border-t border-gray-100">
         <div className="flex flex-col md:flex-row justify-between gap-10">
           <div className="flex items-center gap-3">
-            {/* Logo Footer diubah menggunakan tag img agar sama dengan navbar */}
             <img
               src={logo}
               alt="Logo FermaSense"

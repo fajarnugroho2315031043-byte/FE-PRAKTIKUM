@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 import logo from '../assets/LOGO.png';
-import kombuchaImage from '../assets/kombucha.png';
+import kombuchaImage from '../assets/Kombucha.png';
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 20 },
