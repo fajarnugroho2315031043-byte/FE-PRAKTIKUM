@@ -6,7 +6,6 @@ import {
   Target, Hand, Lock, ShieldCheck, MapPin, Phone, ArrowRight
 } from 'lucide-react';
 
-// Import Gambar disesuaikan dengan Kapitalisasi Asli di Folder Assets
 import logo from '../assets/LOGO.png';
 import heroImage from '../assets/hero-kombucha.png';
 import keranjangImage from '../assets/Keranjang.png';
@@ -163,10 +162,13 @@ export default function LandingPage() {
         <motion.div variants={fadeInUp} className="relative h-[420px] lg:h-[550px] flex items-center justify-center w-full">
           <FloatingLeaf className="-top-2 right-6" delay={0.6} duration={5.5} rotate={15} />
 
+          {/* KARTU SISTEM AKTIF (DAPAT DIGESER / DRAGGABLE) */}
           <motion.div
-            animate={{ y: [0, -12, 0] }}
-            transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
-            className="absolute top-6 left-0 lg:-left-6 bg-white/95 backdrop-blur-md p-5 rounded-3xl shadow-2xl border border-white/50 w-64 z-20"
+            drag
+            dragConstraints={{ top: -100, left: -100, right: 100, bottom: 150 }}
+            dragElastic={0.1}
+            whileDrag={{ scale: 1.05 }}
+            className="absolute top-6 left-0 lg:-left-6 bg-white/95 backdrop-blur-md p-5 rounded-3xl shadow-2xl border border-white/50 w-64 z-20 cursor-grab active:cursor-grabbing select-none"
           >
             <div className="flex items-center gap-3 mb-4 border-b border-gray-100 pb-3">
               <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
@@ -185,7 +187,11 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <Link to="/dashboard" className="text-green-700 text-xs font-bold flex items-center gap-1 pt-2 border-t border-gray-100">
+            <Link 
+              to="/dashboard" 
+              draggable={false}
+              className="text-green-700 text-xs font-bold flex items-center gap-1 pt-2 border-t border-gray-100"
+            >
               Lihat Status Lengkap <ArrowRight size={12} />
             </Link>
           </motion.div>
@@ -193,7 +199,7 @@ export default function LandingPage() {
           <img
             src={heroImage}
             alt="Toples Kombucha dan Perangkat IoT"
-            className="w-full h-full object-cover rounded-[3rem]"
+            className="w-full h-full object-cover rounded-[3rem] pointer-events-none select-none"
           />
         </motion.div>
       </motion.main>
