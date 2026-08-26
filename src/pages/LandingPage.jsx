@@ -13,9 +13,6 @@ import kombuchaImage from '../assets/Kombucha.png';
 import ecoEnzymeImage from '../assets/eco-enzyme.png';
 import fruitEnzymeImage from '../assets/fruit-enzyme.png';
 
-// =====================================================================
-// ANIMASI
-// =====================================================================
 const fadeInUp = {
   hidden: { opacity: 0, y: 30 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
@@ -26,7 +23,6 @@ const staggerContainer = {
   visible: { opacity: 1, transition: { staggerChildren: 0.15 } }
 };
 
-// Hiasan daun mengambang
 function FloatingLeaf({ className = "", delay = 0, duration = 6, rotate = -10, size = 34 }) {
   return (
     <motion.svg
@@ -42,7 +38,6 @@ function FloatingLeaf({ className = "", delay = 0, duration = 6, rotate = -10, s
   );
 }
 
-// Ikon sosial media
 function SocialIcon({ type }) {
   const common = { width: 16, height: 16, viewBox: "0 0 24 24" };
   if (type === "facebook") {
@@ -68,47 +63,30 @@ function SocialIcon({ type }) {
   );
 }
 
-// =====================================================================
-// KOMPONEN UTAMA LANDING PAGE
-// =====================================================================
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-x-hidden">
-
-      {/* --- NAVBAR --- */}
-      <motion.nav
-        initial={{ y: -50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="flex justify-between items-center px-6 md:px-16 py-6 max-w-7xl mx-auto"
-      >
+      
+      {/* NAVBAR */}
+      <nav className="flex justify-between items-center px-6 md:px-16 py-6 max-w-7xl mx-auto">
         <div className="flex items-center gap-3 cursor-pointer">
-          <img
-            src={logo}
-            alt="Logo FermaSense"
-            className="w-12 h-12 rounded-full object-cover"
-          />
-
+          <img src={logo} alt="Logo FermaSense" className="w-12 h-12 rounded-full object-cover" />
           <div className="leading-tight">
-            <span className="block text-xl font-black text-gray-900 tracking-tight">
-              FermaSense
-            </span>
-            <span className="block text-[10px] text-gray-400 font-medium tracking-wide">
-              Monitor. Ferment. Perfect.
-            </span>
+            <span className="block text-xl font-black text-gray-900 tracking-tight">FermaSense</span>
+            <span className="block text-[10px] text-gray-400 font-medium tracking-wide">Monitor. Ferment. Perfect.</span>
           </div>
         </div>
 
         <div className="hidden md:flex gap-10 font-medium text-gray-600 text-sm">
-          <Link to="/" className="text-green-700 font-semibold border-b-2 border-green-700 pb-1"> Beranda </Link>
-          <Link to="/dashboard" className="hover:text-green-700 transition-colors"> Dashboard</Link>
+          <Link to="/" className="text-green-700 font-semibold border-b-2 border-green-700 pb-1">Beranda</Link>
+          <Link to="/dashboard" className="hover:text-green-700 transition-colors">Dashboard</Link>
           <a href="#tentang" className="hover:text-green-700 transition-colors">Tentang</a>
           <a href="#fitur" className="hover:text-green-700 transition-colors">Fitur</a>
-          <a href="#kontak" className="hover:text-green-700 transition-colors">Kontak </a>
+          <a href="#kontak" className="hover:text-green-700 transition-colors">Kontak</a>
         </div>
-      </motion.nav>
+      </nav>
 
-      {/* --- HERO SECTION --- */}
+      {/* HERO SECTION */}
       <motion.main
         initial="hidden"
         animate="visible"
@@ -158,14 +136,13 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
-        {/* GAMBAR HERO KANAN */}
-        <motion.div variants={fadeInUp} className="relative h-[420px] lg:h-[550px] flex items-center justify-center w-full">
+        {/* HERO IMAGE KANAN (Disesuaikan agar pas / tidak terpotong) */}
+        <motion.div variants={fadeInUp} className="relative h-[420px] lg:h-[520px] flex items-center justify-center w-full">
           <FloatingLeaf className="-top-2 right-6" delay={0.6} duration={5.5} rotate={15} />
 
-          {/* KARTU SISTEM AKTIF (DAPAT DIGESER / DRAGGABLE) */}
           <motion.div
             drag
-            dragConstraints={{ top: -100, left: -100, right: 100, bottom: 150 }}
+            dragConstraints={{ top: -80, left: -80, right: 80, bottom: 120 }}
             dragElastic={0.1}
             whileDrag={{ scale: 1.05 }}
             className="absolute top-6 left-0 lg:-left-6 bg-white/95 backdrop-blur-md p-5 rounded-3xl shadow-2xl border border-white/50 w-64 z-20 cursor-grab active:cursor-grabbing select-none"
@@ -196,15 +173,17 @@ export default function LandingPage() {
             </Link>
           </motion.div>
 
-          <img
-            src={heroImage}
-            alt="Toples Kombucha dan Perangkat IoT"
-            className="w-full h-full object-cover rounded-[3rem] pointer-events-none select-none"
-          />
+          <div className="w-full h-full rounded-[2.5rem] overflow-hidden bg-green-50/40 border border-green-100 flex items-center justify-center p-4">
+            <img
+              src={heroImage}
+              alt="Toples Kombucha dan Perangkat IoT"
+              className="w-full h-full object-contain object-center pointer-events-none select-none drop-shadow-md"
+            />
+          </div>
         </motion.div>
       </motion.main>
 
-      {/* --- SECTION PILIHAN SISTEM (3 KARTU) --- */}
+      {/* SECTION PILIHAN OBJEK */}
       <motion.section
         id="fitur"
         initial="hidden"
@@ -225,24 +204,9 @@ export default function LandingPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
           {[
-            { 
-              title: "Kombucha", 
-              path: "/kombucha", 
-              desc: "Pantau fermentasi kombucha secara real-time untuk hasil terbaik setiap saat.", 
-              icon: Droplet 
-            },
-            { 
-              title: "Eco Enzyme", 
-              path: "/eco-enzyme", 
-              desc: "Pantau fermentasi eco enzyme secara real-time untuk kualitas optimal.", 
-              icon: Recycle 
-            },
-            { 
-              title: "Fruit Enzyme", 
-              path: "/fruit-enzyme", 
-              desc: "Pantau fermentasi fruit enzyme secara real-time untuk hasil terbaik setiap saat.", 
-              icon: Apple 
-            }
+            { title: "Kombucha", path: "/kombucha", desc: "Pantau fermentasi kombucha secara real-time untuk hasil terbaik setiap saat.", icon: Droplet },
+            { title: "Eco Enzyme", path: "/eco-enzyme", desc: "Pantau fermentasi eco enzyme secara real-time untuk kualitas optimal.", icon: Recycle },
+            { title: "Fruit Enzyme", path: "/fruit-enzyme", desc: "Pantau fermentasi fruit enzyme secara real-time untuk hasil terbaik setiap saat.", icon: Apple }
           ].map((item, index) => (
             <motion.div
               key={index}
@@ -293,7 +257,7 @@ export default function LandingPage() {
         </div>
       </motion.section>
 
-      {/* --- SECTION KENAPA MEMILIH FERMASENSE --- */}
+      {/* SECTION KENAPA MEMILIH */}
       <motion.section
         initial="hidden"
         whileInView="visible"
@@ -326,7 +290,7 @@ export default function LandingPage() {
         </div>
       </motion.section>
 
-      {/* --- SECTION TEKNOLOGI CERDAS (TENTANG) --- */}
+      {/* SECTION TENTANG */}
       <motion.section
         id="tentang"
         initial="hidden"
@@ -366,7 +330,7 @@ export default function LandingPage() {
             </div>
           </div>
           
-          <div className="relative h-72 lg:h-96 rounded-3xl overflow-hidden border border-white bg-white flex items-center justify-center p-4">
+          <div className="relative h-72 lg:h-96 rounded-3xl overflow-hidden border border-white bg-white flex items-center justify-center p-4 shadow-sm">
             <img 
               src={keranjangImage} 
               alt="Keranjang buah segar" 
@@ -376,7 +340,7 @@ export default function LandingPage() {
         </motion.div>
       </motion.section>
 
-      {/* --- CTA SECTION --- */}
+      {/* CTA SECTION */}
       <motion.section
         initial="hidden"
         whileInView="visible"
@@ -401,15 +365,11 @@ export default function LandingPage() {
         </motion.div>
       </motion.section>
 
-      {/* --- FOOTER --- */}
+      {/* FOOTER */}
       <footer id="kontak" className="max-w-7xl mx-auto px-6 md:px-16 pt-10 pb-12 border-t border-gray-100">
         <div className="flex flex-col md:flex-row justify-between gap-10">
           <div className="flex items-center gap-3">
-            <img
-              src={logo}
-              alt="Logo FermaSense"
-              className="w-12 h-12 rounded-full object-cover"
-            />
+            <img src={logo} alt="Logo FermaSense" className="w-12 h-12 rounded-full object-cover" />
             <div className="leading-tight">
               <span className="block text-lg font-black text-gray-900">FermaSense</span>
               <span className="block text-[10px] text-gray-400 font-medium">Monitor. Ferment. Perfect.</span>
@@ -446,7 +406,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-
     </div>
   );
 }
