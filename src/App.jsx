@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Kombucha from "./pages/Kombucha.jsx";
 import EcoEnzyme from "./pages/EcoEnzyme.jsx";
 import FruitEnzyme from "./pages/FruitEnzyme.jsx";
+import NetworkPerf from "./pages/NetworkPerf.jsx"; // <-- Import halaman NetworkPerf
 
 // Bungkus tiap halaman dengan transisi fade + slide halus saat berpindah route.
 function PageTransition({ children }) {
@@ -33,6 +34,7 @@ function AnimatedRoutes() {
         <Route path="/kombucha" element={<PageTransition><Kombucha /></PageTransition>} />
         <Route path="/eco-enzyme" element={<PageTransition><EcoEnzyme /></PageTransition>} />
         <Route path="/fruit-enzyme" element={<PageTransition><FruitEnzyme /></PageTransition>} />
+        <Route path="/network-perf" element={<PageTransition><NetworkPerf /></PageTransition>} /> {/* <-- Route Baru */}
       </Routes>
     </AnimatePresence>
   );
