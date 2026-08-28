@@ -1,5 +1,5 @@
 // src/services/api.js
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 export const fetchSensorData = async (filters = {}) => {
   try {
@@ -9,8 +9,7 @@ export const fetchSensorData = async (filters = {}) => {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const result = await response.json();
-    // Mengembalikan object: { success, count, limit, filters, data }
-    return result; 
+    return result;
   } catch (error) {
     console.error("Error fetching sensor data:", error);
     throw error;
@@ -25,8 +24,7 @@ export const fetchAnalytics = async (filters = {}) => {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const result = await response.json();
-    // Mengembalikan object: { success, kpi, time_series, data_quality, trends, network }
-    return result; 
+    return result;
   } catch (error) {
     console.error("Error fetching analytics:", error);
     throw error;
@@ -40,8 +38,7 @@ export const fetchActiveNodes = async () => {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const result = await response.json();
-    // Mengembalikan array string node_id (misal: ["KOMBUCHA_01", "ECO_01"])
-    return result.data; 
+    return result.data;
   } catch (error) {
     console.error("Error fetching active nodes:", error);
     throw error;

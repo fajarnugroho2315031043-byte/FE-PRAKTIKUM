@@ -8,7 +8,7 @@ import {
 
 import Sidebar from '../components/Sidebar';
 import kombuchaImage from '../assets/Kombucha.png';
-import { fetchAnalytics } from '../services/api';
+import { fetchSensorData } from '../services/api'; // ← ganti dari fetchAnalytics
 
 // =====================================================================
 // ANIMASI
@@ -27,34 +27,39 @@ export default function Kombucha() {
   const location = useLocation();
   const currentPath = location.pathname;
   
-  // State Navigasi
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-
-  // State Filter & Sensor (Node ID sesuai Supabase: KOMBUCHA_01)
   const [selectedNode, setSelectedNode] = useState("KOMBUCHA_01");
   const [selectedIndicator, setSelectedIndicator] = useState("temperature_c");
   const [selectedTimeRange, setSelectedTimeRange] = useState("24 Jam");
   const [selectedDate, setSelectedDate] = useState("2026-08-28");
 
-  // State Data Backend
-  const [analyticsData, setAnalyticsData] = useState(null);
+  // ← State diubah: timeSeries & latest dipisah langsung
+  const [timeSeries, setTimeSeries] = useState([]);
+  const [latest, setLatest] = useState({});
+  const [totalRows, setTotalRows] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const POLLING_INTERVAL = import.meta.env.VITE_POLLING_INTERVAL || 10000;
+  const POLLING_INTERVAL = Number(import.meta.env.VITE_POLLING_INTERVAL) || 10000;
 
-  // Tutup menu mobile jika rute berubah
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [currentPath]);
 
-  // Fetch Data dari Backend API secara berkala (Polling)
+  // ← Fetch pakai fetchSensorData, petakan response backend { success, count, data }
   useEffect(() => {
     const loadData = async () => {
       try {
-        const result = await fetchAnalytics({ node_id: selectedNode, limit: 100 });
-        setAnalyticsData(result);
+        const result = await fetchSensorData({ node_id: selectedNode, limit: 100 });
+        const rows = result?.data || [];
+
+        // Backend mengembalikan ORDER BY timestamp DESC, jadi balik urutannya untuk grafik
+        const sorted = [...rows].reverse();
+
+        setTimeSeries(sorted);
+        setLatest(sorted[sorted.length - 1] || {}); // data paling baru = index terakhir
+        setTotalRows(result?.count || 0);
         setError(null);
       } catch (err) {
         setError(err.message);
@@ -66,41 +71,29 @@ export default function Kombucha() {
     loadData();
     const intervalId = setInterval(loadData, POLLING_INTERVAL);
     return () => clearInterval(intervalId);
-  }, [selectedNode]);
+  }, [selectedNode, POLLING_INTERVAL]);
 
-  // Data terakhir dari KPI Backend
-  const latest = analyticsData?.kpi?.latest_reading || {};
-  const timeSeries = analyticsData?.time_series || [];
-
-  // Konfigurasi Mapping Indikator Sensor ke Database Field
   const indicatorMap = {
-    "temperature_c": { label: "Suhu", unit: "°C", color: "#dc2626", min: "20°C", max: "40°C" },
-    "ph": { label: "pH", unit: "", color: "#dc2626", min: "2.0", max: "7.0" },
-    "tds_ppm": { label: "TDS", unit: "ppm", color: "#dc2626", min: "0", max: "1000" },
-    "gas_adc": { label: "Gas (ADC)", unit: "ADC", color: "#dc2626", min: "0", max: "1024" },
-    "mq3_adc": { label: "Alkohol / MQ3", unit: "ADC", color: "#dc2626", min: "0", max: "1024" },
-    "pressure_kpa": { label: "Tekanan", unit: "kPa", color: "#dc2626", min: "90", max: "110" }
+    "temperature_c":  { label: "Suhu",          unit: "°C",  color: "#dc2626", min: "20°C", max: "40°C"  },
+    "ph":             { label: "pH",             unit: "",    color: "#dc2626", min: "2.0",  max: "7.0"   },
+    "tds_ppm":        { label: "TDS",            unit: "ppm", color: "#dc2626", min: "0",    max: "1000"  },
+    "gas_adc":        { label: "Gas (ADC)",      unit: "ADC", color: "#dc2626", min: "0",    max: "1024"  },
+    "mq3_adc":        { label: "Alkohol / MQ3",  unit: "ADC", color: "#dc2626", min: "0",    max: "1024"  },
+    "pressure_kpa":   { label: "Tekanan",        unit: "kPa", color: "#dc2626", min: "90",   max: "110"   }
   };
 
   const currentConfig = indicatorMap[selectedIndicator] || indicatorMap["temperature_c"];
 
-  // Helper untuk mengubah array time_series backend menjadi titik koordinat SVG Polyline
   const generateSvgPoints = (dataArray, field) => {
     if (!dataArray || dataArray.length === 0) return "0,50 800,50";
-    
     const values = dataArray.map(item => Number(item[field]) || 0);
     const minVal = Math.min(...values);
     const maxVal = Math.max(...values);
     const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
-
-    const width = 800;
-    const height = 100;
-
     return dataArray.map((item, index) => {
       const val = Number(item[field]) || 0;
-      const x = (index / (dataArray.length - 1 || 1)) * width;
-      // Normalisasi koordinat Y (SVG y terbalik, 0 di atas)
-      const y = height - ((val - minVal) / range) * (height - 20) - 10;
+      const x = (index / (dataArray.length - 1 || 1)) * 800;
+      const y = 100 - ((val - minVal) / range) * 80 - 10;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
   };
@@ -110,58 +103,53 @@ export default function Kombucha() {
   return (
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
       
-      {/* --- OVERLAY MOBILE MENU --- */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setIsMobileMenuOpen(false)}
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-40 md:hidden"
           />
         )}
       </AnimatePresence>
 
-      {/* --- SIDEBAR --- */}
       <Sidebar 
-        isCollapsed={isCollapsed} 
-        setIsCollapsed={setIsCollapsed} 
-        isMobileMenuOpen={isMobileMenuOpen} 
-        setIsMobileMenuOpen={setIsMobileMenuOpen}
-        activeImage={kombuchaImage}
-        activeTitle="Kombucha Active"
+        isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} 
+        isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen}
+        activeImage={kombuchaImage} activeTitle="Kombucha Active"
       />
 
-      {/* --- KONTEN UTAMA --- */}
       <main className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
         
-        {/* HEADER TOP BAR */}
         <header className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 lg:px-10 z-10 flex-shrink-0">
           <div className="flex items-center gap-3 md:gap-4 truncate">
             <button 
               className="md:hidden p-2 rounded-xl bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
-              onClick={() => setIsMobileMenuOpen(true)}
-              aria-label="Open Navigation Menu"
+              onClick={() => setIsMobileMenuOpen(true)} aria-label="Open Navigation Menu"
             >
               <Menu size={20} />
             </button>
             <div className="truncate">
               <h1 className="text-base sm:text-xl font-black text-gray-900 truncate">Dashboard Kombucha</h1>
-              <p className="text-xs text-gray-500 font-medium hidden sm:block">Pantau kondisi fermentasi kombucha secara real-time dari Supabase</p>
+              <p className="text-xs text-gray-500 font-medium hidden sm:block">
+                {loading ? "Memuat data..." : error ? `Error: ${error}` : "Data real-time dari Supabase"}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 flex-shrink-0">
             <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 text-xs font-semibold text-gray-600">
               <Clock size={14} className="text-red-600" />
-              <span>{latest?.timestamp ? new Date(latest.timestamp).toLocaleString('id-ID') : "Memuat waktu..."}</span>
+              <span>
+                {latest?.timestamp 
+                  ? new Date(latest.timestamp).toLocaleString('id-ID') 
+                  : "Memuat waktu..."}
+              </span>
             </div>
 
             <div className="relative">
               <select 
-                value={selectedNode} 
-                onChange={(e) => setSelectedNode(e.target.value)} 
+                value={selectedNode} onChange={(e) => setSelectedNode(e.target.value)} 
                 className="appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 sm:px-4 py-2 sm:py-2.5 pr-7 sm:pr-8 rounded-2xl border border-red-200 outline-none cursor-pointer"
               >
                 <option value="KOMBUCHA_01">KOMBUCHA_01</option>
@@ -177,19 +165,18 @@ export default function Kombucha() {
           </div>
         </header>
 
-        {/* AREA KONTEN SCROLLABLE */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
           <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
             
-            {/* --- GRID KARTU SENSOR DARI BACKEND --- */}
+            {/* --- GRID KARTU SENSOR --- */}
             <motion.div variants={fadeInUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
               {[
-                { label: "Suhu", value: `${latest?.temperature_c ?? 0}°C`, status: "Normal", icon: Thermometer, color: "text-orange-500" },
-                { label: "Gas (ADC)", value: `${latest?.gas_adc ?? 0}`, status: "Normal", icon: Wind, color: "text-blue-500" },
-                { label: "pH", value: `${latest?.ph ?? 0}`, status: "Normal", icon: Droplet, color: "text-red-600" },
-                { label: "Tekanan", value: `${latest?.pressure_kpa ?? 0} kPa`, status: "Normal", icon: Gauge, color: "text-purple-500" },
-                { label: "TDS", value: `${latest?.tds_ppm ?? 0} ppm`, status: "Normal", icon: Activity, color: "text-indigo-500" },
-                { label: "Alkohol (MQ3)", value: `${latest?.mq3_adc ?? 0}`, status: "Normal", icon: Zap, color: "text-amber-500" },
+                { label: "Suhu",          value: loading ? "..." : `${latest?.temperature_c ?? '-'}°C`,    icon: Thermometer, color: "text-orange-500" },
+                { label: "Gas (ADC)",     value: loading ? "..." : `${latest?.gas_adc ?? '-'}`,            icon: Wind,        color: "text-blue-500"   },
+                { label: "pH",            value: loading ? "..." : `${latest?.ph ?? '-'}`,                 icon: Droplet,     color: "text-red-600"    },
+                { label: "Tekanan",       value: loading ? "..." : `${latest?.pressure_kpa ?? '-'} kPa`,   icon: Gauge,       color: "text-purple-500" },
+                { label: "TDS",           value: loading ? "..." : `${latest?.tds_ppm ?? '-'} ppm`,        icon: Activity,    color: "text-indigo-500" },
+                { label: "Alkohol (MQ3)", value: loading ? "..." : `${latest?.mq3_adc ?? '-'}`,            icon: Zap,         color: "text-amber-500"  },
               ].map((sensor, idx) => (
                 <div key={idx} className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
@@ -198,51 +185,46 @@ export default function Kombucha() {
                   </div>
                   <div>
                     <h4 className="text-base sm:text-lg font-black text-gray-900">{sensor.value}</h4>
-                    <span className="inline-block mt-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">{sensor.status}</span>
+                    <span className="inline-block mt-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Normal</span>
                   </div>
                 </div>
               ))}
             </motion.div>
 
-            {/* --- GRAFIK & STATUS FERMENTASI --- */}
+            {/* --- GRAFIK & STATUS --- */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
-              {/* AREA GRAFIK DYNAMIC TIME-SERIES */}
               <motion.div variants={fadeInUp} className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                   <div>
                     <h3 className="text-base font-black text-gray-900">Grafik Time-Series {currentConfig.label}</h3>
-                    <p className="text-xs text-gray-400">Data diambil langsung dari database Supabase secara real-time</p>
+                    <p className="text-xs text-gray-400">Data langsung dari Supabase ({timeSeries.length} titik data)</p>
                   </div>
-                  
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <div className="relative flex-1 sm:flex-initial">
-                      <select 
-                        value={selectedIndicator} 
-                        onChange={(e) => setSelectedIndicator(e.target.value)} 
-                        className="w-full appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 py-2 pr-7 rounded-xl border border-red-200 outline-none cursor-pointer"
-                      >
-                        <option value="temperature_c">Suhu</option>
-                        <option value="ph">pH</option>
-                        <option value="tds_ppm">TDS</option>
-                        <option value="gas_adc">Gas (ADC)</option>
-                        <option value="pressure_kpa">Tekanan</option>
-                        <option value="mq3_adc">Alkohol (MQ3)</option>
-                      </select>
-                      <ChevronDown size={12} className="absolute right-2.5 top-3 text-red-600 pointer-events-none" />
-                    </div>
+                  <div className="relative flex-1 sm:flex-initial">
+                    <select 
+                      value={selectedIndicator} onChange={(e) => setSelectedIndicator(e.target.value)} 
+                      className="w-full appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 py-2 pr-7 rounded-xl border border-red-200 outline-none cursor-pointer"
+                    >
+                      <option value="temperature_c">Suhu</option>
+                      <option value="ph">pH</option>
+                      <option value="tds_ppm">TDS</option>
+                      <option value="gas_adc">Gas (ADC)</option>
+                      <option value="pressure_kpa">Tekanan</option>
+                      <option value="mq3_adc">Alkohol (MQ3)</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2.5 top-3 text-red-600 pointer-events-none" />
                   </div>
                 </div>
 
-                {/* SVG CHART CONTAINER */}
                 <div className="h-60 w-full bg-white rounded-2xl border border-gray-100 p-2 sm:p-4 relative flex flex-col justify-between">
                   <div className="absolute left-1 sm:left-2 top-4 bottom-8 flex flex-col justify-between text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pointer-events-none">
                     <span>{currentConfig.max}</span>
                     <span>{currentConfig.min}</span>
                   </div>
-
                   <div className="relative z-10 w-full h-40 flex items-center pl-6 sm:pl-8 pr-2">
-                    {timeSeries.length === 0 ? (
+                    {loading ? (
+                      <div className="w-full text-center text-xs text-gray-400">Memuat data grafik...</div>
+                    ) : timeSeries.length === 0 ? (
                       <div className="w-full text-center text-xs text-gray-400">Belum ada data riwayat sensor</div>
                     ) : (
                       <svg className="w-full h-full overflow-visible" viewBox="0 0 800 100" preserveAspectRatio="none">
@@ -256,7 +238,6 @@ export default function Kombucha() {
                       </svg>
                     )}
                   </div>
-
                   <div className="relative z-10 flex justify-between pl-6 sm:pl-8 pr-2 text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pt-2 border-t border-gray-100">
                     <span>Awal Data</span>
                     <span>Terbaru</span>
@@ -264,26 +245,27 @@ export default function Kombucha() {
                 </div>
               </motion.div>
 
-              {/* KARTU STATUS FERMENTASI */}
               <motion.div variants={fadeInUp} className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-base font-black text-gray-900">Status Node</h3>
-                    <span className="bg-red-50 text-red-600 font-bold text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span>Connected
+                    <span className={`font-bold text-xs px-2.5 py-1 rounded-full flex items-center gap-1 ${error ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${error ? 'bg-gray-400' : 'bg-red-600 animate-pulse'}`}></span>
+                      {error ? 'Error' : 'Connected'}
                     </span>
                   </div>
                   <p className="text-sm font-bold text-gray-800 mb-1">Node ID: {selectedNode}</p>
-                  <p className="text-xs text-gray-400 mb-4">Total Record Tersimpan: {analyticsData?.total_rows || 0}</p>
+                  <p className="text-xs text-gray-400 mb-4">Total Record: {totalRows}</p>
                   <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden mb-6">
                     <div className="w-full h-full bg-red-600 rounded-full"></div>
                   </div>
                 </div>
-
                 <div className="bg-red-50/50 p-4 rounded-2xl border border-red-100 flex items-center justify-between">
                   <div>
                     <span className="block text-xs font-bold text-red-800">Kualitas Jaringan</span>
-                    <span className="text-[11px] text-red-600">RSSI: {latest?.rssi_dbm ?? 0} dBm</span>
+                    <span className="text-[11px] text-red-600">
+                      RSSI: {loading ? "..." : `${latest?.rssi_dbm ?? '-'} dBm`}
+                    </span>
                   </div>
                   <CheckCircle2 size={24} className="text-red-600 flex-shrink-0" />
                 </div>
