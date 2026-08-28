@@ -14,7 +14,6 @@ import {
   ChevronDown,
   Layers,
   Database,
-  CheckCircle2,
   Server,
 } from 'lucide-react';
 
@@ -49,19 +48,15 @@ const staggerContainer = {
 };
 
 // =====================================================================
-// HELPER
+// HELPER: AMBIL DATA RAW DARI RESPONSE BI
 // =====================================================================
 
 const getRowsFromBI = (result) => {
-  if (
-    Array.isArray(result?.raw_data?.data)
-  ) {
+  if (Array.isArray(result?.raw_data?.data)) {
     return result.raw_data.data;
   }
 
-  if (
-    Array.isArray(result?.data)
-  ) {
+  if (Array.isArray(result?.data)) {
     return result.data;
   }
 
@@ -116,8 +111,13 @@ const computeNetworkMetrics = (rows) => {
         row.received_at
     )
     .map((row) => ({
-      timestamp: new Date(row.timestamp).getTime(),
-      receivedAt: new Date(row.received_at).getTime(),
+      timestamp: new Date(
+        row.timestamp
+      ).getTime(),
+
+      receivedAt: new Date(
+        row.received_at
+      ).getTime(),
     }))
     .filter(
       (row) =>
@@ -128,7 +128,8 @@ const computeNetworkMetrics = (rows) => {
 
   const latencies = latencyRows.map(
     (row) =>
-      row.receivedAt - row.timestamp
+      row.receivedAt -
+      row.timestamp
   );
 
   const avgLatency =
@@ -147,7 +148,8 @@ const computeNetworkMetrics = (rows) => {
     .slice(1)
     .map((value, index) =>
       Math.abs(
-        value - latencies[index]
+        value -
+        latencies[index]
       )
     );
 
@@ -167,20 +169,24 @@ const computeNetworkMetrics = (rows) => {
     .map((row) => Number(row.sequence))
     .filter(Number.isFinite);
 
-  const sortedSequences = [
-    ...sequenceValues,
-  ].sort((a, b) => a - b);
+  // Sequence unik digunakan untuk menghitung packet loss.
+  // Duplicate tetap dihitung secara terpisah.
+  const uniqueSequences = [
+    ...new Set(sequenceValues),
+  ].sort(
+    (a, b) => a - b
+  );
 
   let lostPackets = 0;
 
   for (
     let index = 1;
-    index < sortedSequences.length;
+    index < uniqueSequences.length;
     index++
   ) {
     const gap =
-      sortedSequences[index] -
-      sortedSequences[index - 1] -
+      uniqueSequences[index] -
+      uniqueSequences[index - 1] -
       1;
 
     if (gap > 0) {
@@ -189,7 +195,7 @@ const computeNetworkMetrics = (rows) => {
   }
 
   const expectedPackets =
-    sortedSequences.length +
+    uniqueSequences.length +
     lostPackets;
 
   const packetLossPct =
@@ -201,7 +207,7 @@ const computeNetworkMetrics = (rows) => {
 
   const deliveryRate =
     expectedPackets > 0
-      ? (sortedSequences.length /
+      ? (uniqueSequences.length /
           expectedPackets) *
         100
       : null;
@@ -213,21 +219,28 @@ const computeNetworkMetrics = (rows) => {
   let duplicatePackets = 0;
 
   if (sequenceValues.length > 0) {
-    const sequenceSet = new Set();
+    const sequenceSet =
+      new Set();
 
     sequenceValues.forEach(
       (sequence) => {
-        if (sequenceSet.has(sequence)) {
+        if (
+          sequenceSet.has(
+            sequence
+          )
+        ) {
           duplicatePackets++;
         } else {
-          sequenceSet.add(sequence);
+          sequenceSet.add(
+            sequence
+          );
         }
       }
     );
   }
 
   // ---------------------------------------------------------------
-  // OUT OF ORDER
+  // OUT OF ORDER PACKET
   // ---------------------------------------------------------------
 
   let outOfOrderPackets = 0;
@@ -257,7 +270,9 @@ const computeNetworkMetrics = (rows) => {
       ).getTime()
     )
     .filter(Number.isFinite)
-    .sort((a, b) => a - b);
+    .sort(
+      (a, b) => a - b
+    );
 
   const interArrivalValues =
     timestamps
@@ -267,10 +282,13 @@ const computeNetworkMetrics = (rows) => {
           timestamp -
           timestamps[index]
       )
-      .filter((value) => value >= 0);
+      .filter(
+        (value) => value >= 0
+      );
 
   const interArrival =
-    interArrivalValues.length > 0
+    interArrivalValues.length >
+    0
       ? interArrivalValues.reduce(
           (sum, value) =>
             sum + value,
@@ -330,7 +348,9 @@ const formatNumber = (
   if (
     value === null ||
     value === undefined ||
-    !Number.isFinite(Number(value))
+    !Number.isFinite(
+      Number(value)
+    )
   ) {
     return '-';
   }
@@ -360,7 +380,9 @@ const getNodeStatus = (data) => {
       data.timestamp
     ).getTime();
 
-  if (!Number.isFinite(timestamp)) {
+  if (
+    !Number.isFinite(timestamp)
+  ) {
     return {
       label: 'Tidak Tersedia',
       className:
@@ -408,7 +430,9 @@ const getNodeStatus = (data) => {
 // =====================================================================
 
 export default function NetworkPerf() {
-  const location = useLocation();
+  const location =
+    useLocation();
+
   const currentPath =
     location.pathname;
 
@@ -472,7 +496,9 @@ export default function NetworkPerf() {
   // ===================================================================
 
   useEffect(() => {
-    setIsMobileMenuOpen(false);
+    setIsMobileMenuOpen(
+      false
+    );
   }, [currentPath]);
 
   // ===================================================================
@@ -495,10 +521,14 @@ export default function NetworkPerf() {
           }
 
           const result =
-            await fetchBI(filters);
+            await fetchBI(
+              filters
+            );
 
           const data =
-            getRowsFromBI(result);
+            getRowsFromBI(
+              result
+            );
 
           const sorted = [
             ...data,
@@ -519,13 +549,17 @@ export default function NetworkPerf() {
           }
 
           setRows(sorted);
+
           setLatest(
             sorted[
               sorted.length - 1
             ] || null
           );
 
-          setApiAvailable(true);
+          setApiAvailable(
+            true
+          );
+
           setError(null);
         } catch (err) {
           console.error(
@@ -536,7 +570,10 @@ export default function NetworkPerf() {
           if (isMounted) {
             setRows([]);
             setLatest(null);
-            setApiAvailable(false);
+
+            setApiAvailable(
+              false
+            );
 
             setError(
               'Backend tidak dapat diakses. Data jaringan belum tersedia.'
@@ -544,12 +581,15 @@ export default function NetworkPerf() {
           }
         } finally {
           if (isMounted) {
-            setLoading(false);
+            setLoading(
+              false
+            );
           }
         }
       };
 
     setLoading(true);
+
     loadNetworkData();
 
     const intervalId =
@@ -560,6 +600,7 @@ export default function NetworkPerf() {
 
     return () => {
       isMounted = false;
+
       clearInterval(
         intervalId
       );
@@ -648,10 +689,14 @@ export default function NetworkPerf() {
               ),
 
             ECO_02:
-              getLatest(eco),
+              getLatest(
+                eco
+              ),
 
             FRUIT_03:
-              getLatest(fruit),
+              getLatest(
+                fruit
+              ),
           });
         } catch (err) {
           console.error(
@@ -673,7 +718,9 @@ export default function NetworkPerf() {
       clearInterval(
         intervalId
       );
-  }, [POLLING_INTERVAL]);
+  }, [
+    POLLING_INTERVAL,
+  ]);
 
   // ===================================================================
   // METRIK
@@ -688,7 +735,7 @@ export default function NetworkPerf() {
   );
 
   // ===================================================================
-  // METRIC SPECS
+  // SPESIFIKASI METRIK
   // ===================================================================
 
   const metricSpecs = [
@@ -707,7 +754,8 @@ export default function NetworkPerf() {
     },
 
     {
-      metric: 'Latency / Delay',
+      metric:
+        'Latency / Delay',
       source:
         'timestamp + received_at',
       function:
@@ -773,7 +821,8 @@ export default function NetworkPerf() {
     },
 
     {
-      metric: 'Data Freshness',
+      metric:
+        'Data Freshness',
       source: 'timestamp',
       function:
         'Menilai seberapa baru data sensor diterima.',
@@ -840,9 +889,7 @@ export default function NetworkPerf() {
           : '-',
       status:
         apiAvailable
-          ? `${
-              metrics.lostPackets
-            } hilang`
+          ? `${metrics.lostPackets} hilang`
           : 'Tidak tersedia',
       icon: ShieldAlert,
       color:
@@ -917,9 +964,7 @@ export default function NetworkPerf() {
   return (
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
 
-      {/* ============================================================= */}
       {/* MOBILE OVERLAY */}
-      {/* ============================================================= */}
 
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -943,9 +988,7 @@ export default function NetworkPerf() {
         )}
       </AnimatePresence>
 
-      {/* ============================================================= */}
       {/* SIDEBAR */}
-      {/* ============================================================= */}
 
       <Sidebar
         isCollapsed={
@@ -962,15 +1005,9 @@ export default function NetworkPerf() {
         }
       />
 
-      {/* ============================================================= */}
-      {/* MAIN */}
-      {/* ============================================================= */}
-
       <main className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
 
-        {/* =========================================================== */}
         {/* HEADER */}
-        {/* =========================================================== */}
 
         <header className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 lg:px-10 z-10 flex-shrink-0">
 
@@ -1028,7 +1065,7 @@ export default function NetworkPerf() {
 
             </div>
 
-            {/* NODE FILTER */}
+            {/* FILTER NODE */}
 
             <div className="relative">
 
@@ -1075,19 +1112,16 @@ export default function NetworkPerf() {
               className="relative w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
               aria-label="Notifikasi"
             >
-
               <Bell size={18} />
 
               <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
-
             </button>
 
           </div>
+
         </header>
 
-        {/* =========================================================== */}
         {/* CONTENT */}
-        {/* =========================================================== */}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
 
@@ -1100,9 +1134,7 @@ export default function NetworkPerf() {
             className="max-w-7xl mx-auto space-y-6 sm:space-y-8"
           >
 
-            {/* ======================================================= */}
             {/* METRIC CARDS */}
-            {/* ======================================================= */}
 
             <motion.div
               variants={fadeInUp}
@@ -1164,9 +1196,7 @@ export default function NetworkPerf() {
 
             </motion.div>
 
-            {/* ======================================================= */}
             {/* DETAIL METRIC */}
-            {/* ======================================================= */}
 
             <motion.div
               variants={fadeInUp}
@@ -1245,9 +1275,7 @@ export default function NetworkPerf() {
 
             </motion.div>
 
-            {/* ======================================================= */}
             {/* STATUS NODE */}
-            {/* ======================================================= */}
 
             <motion.div
               variants={fadeInUp}
@@ -1408,9 +1436,7 @@ export default function NetworkPerf() {
 
             </motion.div>
 
-            {/* ======================================================= */}
             {/* SPESIFIKASI METRIK */}
-            {/* ======================================================= */}
 
             <motion.div
               variants={fadeInUp}
