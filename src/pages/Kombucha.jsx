@@ -8,6 +8,7 @@ import {
 
 import Sidebar from '../components/Sidebar';
 import kombuchaImage from '../assets/Kombucha.png';
+import { fetchAnalytics } from '../services/api';
 
 // =====================================================================
 // ANIMASI
@@ -22,9 +23,6 @@ const staggerContainer = {
   visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
 };
 
-// =====================================================================
-// KOMPONEN UTAMA KOMBUCHA
-// =====================================================================
 export default function Kombucha() {
   const location = useLocation();
   const currentPath = location.pathname;
@@ -33,33 +31,86 @@ export default function Kombucha() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // State Filter & Sensor
-  const [selectedFermenter, setSelectedFermenter] = useState("Fermenter 1");
-  const [selectedIndicator, setSelectedIndicator] = useState("Suhu");
+  // State Filter & Sensor (Node ID sesuai Supabase: KOMBUCHA_01)
+  const [selectedNode, setSelectedNode] = useState("KOMBUCHA_01");
+  const [selectedIndicator, setSelectedIndicator] = useState("temperature_c");
   const [selectedTimeRange, setSelectedTimeRange] = useState("24 Jam");
-  const [selectedDate, setSelectedDate] = useState("2026-08-16");
+  const [selectedDate, setSelectedDate] = useState("2026-08-28");
 
-  // Otomatis menutup menu mobile jika halaman berubah
+  // State Data Backend
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const POLLING_INTERVAL = import.meta.env.VITE_POLLING_INTERVAL || 10000;
+
+  // Tutup menu mobile jika rute berubah
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [currentPath]);
 
-  // Konfigurasi Sensor (Tanpa Glukosa)
-  const indicatorConfig = {
-    "Suhu": { unit: "°C", points: "0,65 100,55 200,70 300,45 400,50 500,35 600,40 700,30 800,45", color: "#dc2626", min: "24°C", max: "32°C" },
-    "pH": { unit: "", points: "0,40 100,45 200,42 300,50 400,48 500,55 600,52 700,60 800,58", color: "#dc2626", min: "2.5", max: "4.5" },
-    "TDS": { unit: "ppm", points: "0,50 100,60 200,40 300,55 400,35 500,45 600,30 700,40 800,35", color: "#dc2626", min: "400", max: "700" },
-    "Gas (Amonia)": { unit: "ppm", points: "0,70 100,75 200,65 300,80 400,60 500,70 600,55 700,65 800,50", color: "#dc2626", min: "5 ppm", max: "20 ppm" },
-    "Tekanan": { unit: "atm", points: "0,50 100,52 200,49 300,51 400,50 500,52 600,50 700,49 800,50", color: "#dc2626", min: "0.9 atm", max: "1.1 atm" },
-    "Alkohol": { unit: "%", points: "0,80 100,75 200,70 300,60 400,55 500,45 600,40 700,30 800,25", color: "#dc2626", min: "0%", max: "2%" },
+  // Fetch Data dari Backend API secara berkala (Polling)
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const result = await fetchAnalytics({ node_id: selectedNode, limit: 100 });
+        setAnalyticsData(result);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+    const intervalId = setInterval(loadData, POLLING_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [selectedNode]);
+
+  // Data terakhir dari KPI Backend
+  const latest = analyticsData?.kpi?.latest_reading || {};
+  const timeSeries = analyticsData?.time_series || [];
+
+  // Konfigurasi Mapping Indikator Sensor ke Database Field
+  const indicatorMap = {
+    "temperature_c": { label: "Suhu", unit: "°C", color: "#dc2626", min: "20°C", max: "40°C" },
+    "ph": { label: "pH", unit: "", color: "#dc2626", min: "2.0", max: "7.0" },
+    "tds_ppm": { label: "TDS", unit: "ppm", color: "#dc2626", min: "0", max: "1000" },
+    "gas_adc": { label: "Gas (ADC)", unit: "ADC", color: "#dc2626", min: "0", max: "1024" },
+    "mq3_adc": { label: "Alkohol / MQ3", unit: "ADC", color: "#dc2626", min: "0", max: "1024" },
+    "pressure_kpa": { label: "Tekanan", unit: "kPa", color: "#dc2626", min: "90", max: "110" }
   };
 
-  const currentConfig = indicatorConfig[selectedIndicator] || indicatorConfig["Suhu"];
+  const currentConfig = indicatorMap[selectedIndicator] || indicatorMap["temperature_c"];
+
+  // Helper untuk mengubah array time_series backend menjadi titik koordinat SVG Polyline
+  const generateSvgPoints = (dataArray, field) => {
+    if (!dataArray || dataArray.length === 0) return "0,50 800,50";
+    
+    const values = dataArray.map(item => Number(item[field]) || 0);
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+    const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
+
+    const width = 800;
+    const height = 100;
+
+    return dataArray.map((item, index) => {
+      const val = Number(item[field]) || 0;
+      const x = (index / (dataArray.length - 1 || 1)) * width;
+      // Normalisasi koordinat Y (SVG y terbalik, 0 di atas)
+      const y = height - ((val - minVal) / range) * (height - 20) - 10;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+  };
+
+  const chartPoints = generateSvgPoints(timeSeries, selectedIndicator);
 
   return (
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
       
-      {/* --- OVERLAY MOBILE MENU (BACKDROP) --- */}
+      {/* --- OVERLAY MOBILE MENU --- */}
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div 
@@ -72,7 +123,7 @@ export default function Kombucha() {
         )}
       </AnimatePresence>
 
-      {/* --- SIDEBAR COMPONENT (REUSABLE) --- */}
+      {/* --- SIDEBAR --- */}
       <Sidebar 
         isCollapsed={isCollapsed} 
         setIsCollapsed={setIsCollapsed} 
@@ -97,25 +148,24 @@ export default function Kombucha() {
             </button>
             <div className="truncate">
               <h1 className="text-base sm:text-xl font-black text-gray-900 truncate">Dashboard Kombucha</h1>
-              <p className="text-xs text-gray-500 font-medium hidden sm:block">Pantau kondisi fermentasi kombucha secara real-time</p>
+              <p className="text-xs text-gray-500 font-medium hidden sm:block">Pantau kondisi fermentasi kombucha secara real-time dari Supabase</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 flex-shrink-0">
             <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 text-xs font-semibold text-gray-600">
               <Clock size={14} className="text-red-600" />
-              <span>16 Agustus 2026 - 10:30 WIB</span>
+              <span>{latest?.timestamp ? new Date(latest.timestamp).toLocaleString('id-ID') : "Memuat waktu..."}</span>
             </div>
 
             <div className="relative">
               <select 
-                value={selectedFermenter} 
-                onChange={(e) => setSelectedFermenter(e.target.value)} 
+                value={selectedNode} 
+                onChange={(e) => setSelectedNode(e.target.value)} 
                 className="appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 sm:px-4 py-2 sm:py-2.5 pr-7 sm:pr-8 rounded-2xl border border-red-200 outline-none cursor-pointer"
               >
-                <option value="Fermenter 1">Fermenter 1</option>
-                <option value="Fermenter 2">Fermenter 2</option>
-                <option value="Fermenter 3">Fermenter 3</option>
+                <option value="KOMBUCHA_01">KOMBUCHA_01</option>
+                <option value="KOMBUCHA_02">KOMBUCHA_02</option>
               </select>
               <ChevronDown size={14} className="absolute right-2.5 sm:right-3 top-3 sm:top-3.5 text-red-600 pointer-events-none" />
             </div>
@@ -131,15 +181,15 @@ export default function Kombucha() {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
           <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
             
-            {/* --- GRID KARTU 6 SENSOR UTAMA --- */}
+            {/* --- GRID KARTU SENSOR DARI BACKEND --- */}
             <motion.div variants={fadeInUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
               {[
-                { label: "Suhu", value: "28.4°C", status: "Normal", icon: Thermometer, color: "text-orange-500" },
-                { label: "Gas (Amonia)", value: "12 ppm", status: "Normal", icon: Wind, color: "text-blue-500" },
-                { label: "pH", value: "3.45", status: "Normal", icon: Droplet, color: "text-red-600" },
-                { label: "Tekanan", value: "1.01 atm", status: "Normal", icon: Gauge, color: "text-purple-500" },
-                { label: "TDS", value: "540 ppm", status: "Normal", icon: Activity, color: "text-indigo-500" },
-                { label: "Alkohol", value: "1.2%", status: "Normal", icon: Zap, color: "text-amber-500" },
+                { label: "Suhu", value: `${latest?.temperature_c ?? 0}°C`, status: "Normal", icon: Thermometer, color: "text-orange-500" },
+                { label: "Gas (ADC)", value: `${latest?.gas_adc ?? 0}`, status: "Normal", icon: Wind, color: "text-blue-500" },
+                { label: "pH", value: `${latest?.ph ?? 0}`, status: "Normal", icon: Droplet, color: "text-red-600" },
+                { label: "Tekanan", value: `${latest?.pressure_kpa ?? 0} kPa`, status: "Normal", icon: Gauge, color: "text-purple-500" },
+                { label: "TDS", value: `${latest?.tds_ppm ?? 0} ppm`, status: "Normal", icon: Activity, color: "text-indigo-500" },
+                { label: "Alkohol (MQ3)", value: `${latest?.mq3_adc ?? 0}`, status: "Normal", icon: Zap, color: "text-amber-500" },
               ].map((sensor, idx) => (
                 <div key={idx} className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
@@ -157,12 +207,12 @@ export default function Kombucha() {
             {/* --- GRAFIK & STATUS FERMENTASI --- */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               
-              {/* AREA GRAFIK */}
+              {/* AREA GRAFIK DYNAMIC TIME-SERIES */}
               <motion.div variants={fadeInUp} className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                   <div>
-                    <h3 className="text-base font-black text-gray-900">Grafik Time-Series {selectedIndicator}</h3>
-                    <p className="text-xs text-gray-400">{selectedTimeRange === "Tanggal" ? `Menampilkan data tanggal ${selectedDate}` : "Pemantauan historis 24 jam terakhir"}</p>
+                    <h3 className="text-base font-black text-gray-900">Grafik Time-Series {currentConfig.label}</h3>
+                    <p className="text-xs text-gray-400">Data diambil langsung dari database Supabase secara real-time</p>
                   </div>
                   
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -172,36 +222,15 @@ export default function Kombucha() {
                         onChange={(e) => setSelectedIndicator(e.target.value)} 
                         className="w-full appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 py-2 pr-7 rounded-xl border border-red-200 outline-none cursor-pointer"
                       >
-                        <option value="Suhu">Suhu</option>
-                        <option value="pH">pH</option>
-                        <option value="TDS">TDS</option>
-                        <option value="Gas (Amonia)">Gas (Amonia)</option>
-                        <option value="Tekanan">Tekanan</option>
-                        <option value="Alkohol">Alkohol</option>
+                        <option value="temperature_c">Suhu</option>
+                        <option value="ph">pH</option>
+                        <option value="tds_ppm">TDS</option>
+                        <option value="gas_adc">Gas (ADC)</option>
+                        <option value="pressure_kpa">Tekanan</option>
+                        <option value="mq3_adc">Alkohol (MQ3)</option>
                       </select>
                       <ChevronDown size={12} className="absolute right-2.5 top-3 text-red-600 pointer-events-none" />
                     </div>
-
-                    <div className="relative flex-1 sm:flex-initial">
-                      <select 
-                        value={selectedTimeRange} 
-                        onChange={(e) => setSelectedTimeRange(e.target.value)} 
-                        className="w-full appearance-none bg-gray-50 text-gray-700 font-bold text-xs px-3 py-2 pr-7 rounded-xl border border-gray-200 outline-none cursor-pointer"
-                      >
-                        <option value="24 Jam">24 Jam</option>
-                        <option value="Tanggal">Tanggal</option>
-                        <option value="Minggu">Minggu</option>
-                        <option value="Bulan">Bulan</option>
-                      </select>
-                      <ChevronDown size={12} className="absolute right-2.5 top-3 text-gray-500 pointer-events-none" />
-                    </div>
-
-                    {selectedTimeRange === "Tanggal" && (
-                      <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-700 font-bold w-full sm:w-auto">
-                        <Calendar size={14} className="text-gray-400 flex-shrink-0" />
-                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent border-none outline-none text-xs text-gray-700 cursor-pointer w-full"/>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -213,23 +242,24 @@ export default function Kombucha() {
                   </div>
 
                   <div className="relative z-10 w-full h-40 flex items-center pl-6 sm:pl-8 pr-2">
-                    <svg className="w-full h-full overflow-visible" viewBox="0 0 800 100" preserveAspectRatio="none">
-                      <polyline fill="none" stroke={currentConfig.color} strokeWidth="2.5" points={currentConfig.points}/>
-                      {currentConfig.points.split(" ").map((pt, index) => {
-                        const [cx, cy] = pt.split(",");
-                        return <circle key={index} cx={cx} cy={cy} r="3.5" fill="white" stroke={currentConfig.color} strokeWidth="2" />;
-                      })}
-                    </svg>
+                    {timeSeries.length === 0 ? (
+                      <div className="w-full text-center text-xs text-gray-400">Belum ada data riwayat sensor</div>
+                    ) : (
+                      <svg className="w-full h-full overflow-visible" viewBox="0 0 800 100" preserveAspectRatio="none">
+                        <polyline fill="none" stroke={currentConfig.color} strokeWidth="2.5" points={chartPoints}/>
+                        {timeSeries.map((_, index) => {
+                          const pts = chartPoints.split(" ");
+                          if (!pts[index]) return null;
+                          const [cx, cy] = pts[index].split(",");
+                          return <circle key={index} cx={cx} cy={cy} r="3" fill="white" stroke={currentConfig.color} strokeWidth="2" />;
+                        })}
+                      </svg>
+                    )}
                   </div>
 
                   <div className="relative z-10 flex justify-between pl-6 sm:pl-8 pr-2 text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pt-2 border-t border-gray-100">
-                    {selectedTimeRange === "24 Jam" || selectedTimeRange === "Tanggal" ? (
-                      <><span>00:00</span><span>04:00</span><span>08:00</span><span>12:00</span><span>16:00</span><span>20:00</span><span>23:59</span></>
-                    ) : selectedTimeRange === "Minggu" ? (
-                      <><span>Senin</span><span>Selasa</span><span>Rabu</span><span>Kamis</span><span>Jumat</span><span>Sabtu</span><span>Minggu</span></>
-                    ) : (
-                      <><span>Mng 1</span><span>Mng 2</span><span>Mng 3</span><span>Mng 4</span></>
-                    )}
+                    <span>Awal Data</span>
+                    <span>Terbaru</span>
                   </div>
                 </div>
               </motion.div>
@@ -238,46 +268,27 @@ export default function Kombucha() {
               <motion.div variants={fadeInUp} className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-base font-black text-gray-900">Status Fermentasi</h3>
+                    <h3 className="text-base font-black text-gray-900">Status Node</h3>
                     <span className="bg-red-50 text-red-600 font-bold text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span>Aktif
+                      <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span>Connected
                     </span>
                   </div>
-                  <p className="text-sm font-bold text-gray-800 mb-1">Hari ke-7 dari 14</p>
-                  <p className="text-xs text-gray-400 mb-4">Estimasi selesai: 23 Agustus 2026</p>
+                  <p className="text-sm font-bold text-gray-800 mb-1">Node ID: {selectedNode}</p>
+                  <p className="text-xs text-gray-400 mb-4">Total Record Tersimpan: {analyticsData?.total_rows || 0}</p>
                   <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden mb-6">
-                    <div className="w-1/2 h-full bg-red-600 rounded-full"></div>
+                    <div className="w-full h-full bg-red-600 rounded-full"></div>
                   </div>
                 </div>
 
                 <div className="bg-red-50/50 p-4 rounded-2xl border border-red-100 flex items-center justify-between">
                   <div>
-                    <span className="block text-xs font-bold text-red-800">Kualitas Kombucha</span>
-                    <span className="text-[11px] text-red-600">Parameter optimal & stabil</span>
+                    <span className="block text-xs font-bold text-red-800">Kualitas Jaringan</span>
+                    <span className="text-[11px] text-red-600">RSSI: {latest?.rssi_dbm ?? 0} dBm</span>
                   </div>
                   <CheckCircle2 size={24} className="text-red-600 flex-shrink-0" />
                 </div>
               </motion.div>
             </div>
-
-            {/* NOTIFIKASI SISTEM */}
-            <motion.div variants={fadeInUp} className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm max-w-2xl">
-              <h3 className="text-base font-black text-gray-900 mb-4">Notifikasi Sistem</h3>
-              <div className="space-y-3">
-                {[
-                  { text: "Suhu terpantau dalam rentang optimal (28.4°C)", time: "10:15 WIB" },
-                  { text: "pH berada di tingkat ideal untuk hari ke-7", time: "09:30 WIB" }
-                ].map((notif, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 rounded-2xl bg-[#fcfcfb] border border-gray-100 text-xs">
-                    <CheckCircle2 size={16} className="text-red-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-800">{notif.text}</p>
-                      <span className="text-[10px] text-gray-400">{notif.time}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
 
           </motion.div>
         </div>

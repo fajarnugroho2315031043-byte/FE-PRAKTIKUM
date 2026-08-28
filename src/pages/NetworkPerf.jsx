@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import { 
   Bell, Menu, Wifi, Activity, ArrowDownUp, ShieldAlert, Clock, ChevronDown,
-  Layers, Repeat, ArrowUpDown, Database, CheckCircle2, Server
+  Layers, Database, CheckCircle2, Server
 } from 'lucide-react';
 
 import Sidebar from '../components/Sidebar';
+import { fetchAnalytics } from '../services/api';
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 20 },
@@ -24,11 +25,46 @@ export default function NetworkPerf() {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [selectedNode, setSelectedNode] = useState("Node Utama (Gateway)");
+  const [selectedNode, setSelectedNode] = useState(""); // Kosong = Semua Node / Gateway
+
+  // State untuk data jaringan dari Backend
+  const [networkData, setNetworkData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const POLLING_INTERVAL = import.meta.env.VITE_POLLING_INTERVAL || 10000;
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [currentPath]);
+
+  // Fetch data analytics jaringan dari backend secara berkala
+  useEffect(() => {
+    const loadNetworkData = async () => {
+      try {
+        const filters = selectedNode ? { node_id: selectedNode } : {};
+        const result = await fetchAnalytics(filters);
+        setNetworkData(result);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadNetworkData();
+    const intervalId = setInterval(loadNetworkData, POLLING_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [selectedNode]);
+
+  // Ekstraksi data dari respons backend
+  const net = networkData?.network || {};
+  const signal = net.signal || {};
+  const delay = net.delay || {};
+  const jitter = net.jitter || {};
+  const packetLoss = net.packet_loss || {};
+  const latest = networkData?.kpi?.latest_reading || {};
 
   // Data Referensi Spesifikasi Metrik Jaringan
   const metricSpecs = [
@@ -90,7 +126,7 @@ export default function NetworkPerf() {
           <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 flex-shrink-0">
             <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 text-xs font-semibold text-gray-600">
               <Clock size={14} className="text-blue-600" />
-              <span>16 Agustus 2026 - 10:30 WIB</span>
+              <span>{latest?.timestamp ? new Date(latest.timestamp).toLocaleString('id-ID') : "Sinkronisasi..."}</span>
             </div>
 
             <div className="relative">
@@ -99,10 +135,10 @@ export default function NetworkPerf() {
                 onChange={(e) => setSelectedNode(e.target.value)} 
                 className="appearance-none bg-blue-50 text-blue-600 font-bold text-xs px-3 sm:px-4 py-2 sm:py-2.5 pr-7 sm:pr-8 rounded-2xl border border-blue-200 outline-none cursor-pointer"
               >
-                <option value="Node Utama (Gateway)">Node Utama (Gateway)</option>
-                <option value="Node Kombucha">Node Kombucha</option>
-                <option value="Node Eco Enzyme">Node Eco Enzyme</option>
-                <option value="Node Fruit Enzyme">Node Fruit Enzyme</option>
+                <option value="">Semua Node (Gateway)</option>
+                <option value="KOMBUCHA_01">KOMBUCHA_01</option>
+                <option value="ECO_02">ECO_02</option>
+                <option value="FRUIT_03">FRUIT_03</option>
               </select>
               <ChevronDown size={14} className="absolute right-2.5 sm:right-3 top-3 sm:top-3.5 text-blue-600 pointer-events-none" />
             </div>
@@ -118,15 +154,15 @@ export default function NetworkPerf() {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
           <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
             
-            {/* GRID KARTU METRIK JARINGAN UTAMA */}
+            {/* GRID KARTU METRIK JARINGAN UTAMA DARI BACKEND */}
             <motion.div variants={fadeInUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
               {[
-                { label: "Sinyal (RSSI)", value: "-62 dBm", status: "Sangat Baik", icon: Wifi, color: "text-blue-600" },
-                { label: "Latensi (Delay)", value: "18 ms", status: "Optimal", icon: Activity, color: "text-green-600" },
-                { label: "Packet Loss", value: "0.01%", status: "Sangat Rendah", icon: ShieldAlert, color: "text-purple-600" },
-                { label: "Jitter", value: "2.1 ms", status: "Stabil", icon: Layers, color: "text-amber-500" },
-                { label: "Packet Rate", value: "12 pkt/s", status: "Normal", icon: ArrowDownUp, color: "text-indigo-600" },
-                { label: "Data Freshness", value: "1.2s lalu", status: "Real-time", icon: Database, color: "text-teal-600" },
+                { label: "Sinyal (RSSI)", value: `${signal.average_dbm ? signal.average_dbm.toFixed(1) : 0} dBm`, status: "Sinyal Aktif", icon: Wifi, color: "text-blue-600" },
+                { label: "Latensi (Delay)", value: `${delay.average_ms ? delay.average_ms.toFixed(1) : 0} ms`, status: "Optimal", icon: Activity, color: "text-green-600" },
+                { label: "Packet Loss", value: `${packetLoss.packet_loss_percent ? packetLoss.packet_loss_percent.toFixed(2) : 0}%`, status: "Hilang: " + (packetLoss.lost_packets || 0), icon: ShieldAlert, color: "text-purple-600" },
+                { label: "Jitter", value: `${jitter.jitter_ms ? jitter.jitter_ms.toFixed(1) : 0} ms`, status: "Variasi Delay", icon: Layers, color: "text-amber-500" },
+                { label: "Total Record", value: `${net.total_rows || 0} pkt`, status: "Terekam", icon: ArrowDownUp, color: "text-indigo-600" },
+                { label: "Data Freshness", value: latest?.timestamp ? new Date(latest.timestamp).toLocaleTimeString() : "-", status: "Real-time", icon: Database, color: "text-teal-600" },
               ].map((item, idx) => (
                 <div key={idx} className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
                   <div className="flex justify-between items-center mb-2">
@@ -143,32 +179,29 @@ export default function NetworkPerf() {
 
             {/* TABEL STATUS NODE JARINGAN */}
             <motion.div variants={fadeInUp} className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm">
-              <h3 className="text-base font-black text-gray-900 mb-4">Status Perangkat & Node Terhubung</h3>
+              <h3 className="text-base font-black text-gray-900 mb-4">Status Perangkat & Node Terhubung (Supabase)</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-gray-600">
                   <thead className="bg-gray-50 text-gray-400 font-bold uppercase text-[10px] tracking-wider">
                     <tr>
-                      <th className="p-3 rounded-l-xl">Nama Node</th>
-                      <th className="p-3">Alamat IP / MAC</th>
-                      <th className="p-3">RSSI</th>
-                      <th className="p-3">Latensi</th>
-                      <th className="p-3">Delivery Rate</th>
+                      <th className="p-3 rounded-l-xl">Nama Node / ID</th>
+                      <th className="p-3">Total Batch</th>
+                      <th className="p-3">Sinyal Terakhir (RSSI)</th>
+                      <th className="p-3">Data Terakhir Masuk</th>
                       <th className="p-3 rounded-r-xl">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 font-medium">
                     {[
-                      { node: "Gateway Utama", ip: "192.168.1.1", rssi: "-55 dBm", latency: "12 ms", delivery: "99.9%", status: "Online" },
-                      { node: "Node Kombucha", ip: "192.168.1.105", rssi: "-64 dBm", latency: "18 ms", delivery: "99.8%", status: "Online" },
-                      { node: "Node Eco Enzyme", ip: "192.168.1.108", rssi: "-68 dBm", latency: "22 ms", delivery: "99.5%", status: "Online" },
-                      { node: "Node Fruit Enzyme", ip: "192.168.1.112", rssi: "-61 dBm", latency: "15 ms", status: "Online", delivery: "99.9%" },
+                      { node: "KOMBUCHA_01", batch: "KB_2026_01", rssi: `${latest?.rssi_dbm || '-'} dBm`, time: latest?.timestamp ? new Date(latest.timestamp).toLocaleString() : '-', status: "Online" },
+                      { node: "ECO_02", batch: "EE_2026_02", rssi: "Terhubung", time: "Real-time", status: "Online" },
+                      { node: "FRUIT_03", batch: "FR_2026_03", rssi: "Terhubung", time: "Real-time", status: "Online" },
                     ].map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                         <td className="p-3 font-bold text-gray-800">{row.node}</td>
-                        <td className="p-3 text-gray-500 font-mono">{row.ip}</td>
+                        <td className="p-3 text-gray-500 font-mono">{row.batch}</td>
                         <td className="p-3">{row.rssi}</td>
-                        <td className="p-3">{row.latency}</td>
-                        <td className="p-3 text-green-700 font-bold">{row.delivery}</td>
+                        <td className="p-3">{row.time}</td>
                         <td className="p-3">
                           <span className="bg-green-50 text-green-600 font-bold px-2 py-0.5 rounded-full text-[10px] inline-flex items-center gap-1">
                             <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>

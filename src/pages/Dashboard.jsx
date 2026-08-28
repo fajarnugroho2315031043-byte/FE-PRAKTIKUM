@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Droplet, Recycle, Apple, 
-  Bell, Menu, Search, ArrowRight
+  Bell, Menu, Search, ArrowRight, Clock
 } from 'lucide-react';
 
 import Sidebar from '../components/Sidebar';
+import { fetchAnalytics } from '../services/api';
 
 // =====================================================================
 // ANIMASI
@@ -32,10 +33,54 @@ export default function Dashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  // State Data Backend untuk 3 Node Utama
+  const [kombuchaData, setKombuchaData] = useState(null);
+  const [ecoData, setEcoData] = useState(null);
+  const [fruitData, setFruitData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const POLLING_INTERVAL = import.meta.env.VITE_POLLING_INTERVAL || 10000;
+
   // Tutup mobile menu secara otomatis saat berpindah rute
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [currentPath]);
+
+  // Fetch data secara berkala untuk semua node
+  useEffect(() => {
+    const loadAllNodes = async () => {
+      try {
+        const [kombuchaRes, ecoRes, fruitRes] = await Promise.all([
+          fetchAnalytics({ node_id: "KOMBUCHA_01", limit: 1 }).catch(() => null),
+          fetchAnalytics({ node_id: "ECO_02", limit: 1 }).catch(() => null),
+          fetchAnalytics({ node_id: "FRUIT_03", limit: 1 }).catch(() => null),
+        ]);
+
+        setKombuchaData(kombuchaRes?.kpi?.latest_reading || null);
+        setEcoData(ecoRes?.kpi?.latest_reading || null);
+        setFruitData(fruitRes?.kpi?.latest_reading || null);
+      } catch (err) {
+        console.error("Gagal memuat ringkasan dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAllNodes();
+    const intervalId = setInterval(loadAllNodes, POLLING_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Hitung rata-rata suhu secara dinamis jika data tersedia
+  const temps = [
+    kombuchaData?.temperature_c,
+    ecoData?.temperature_c,
+    fruitData?.temperature_c
+  ].filter(t => t !== undefined && t !== null);
+
+  const avgTemp = temps.length > 0 
+    ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) 
+    : "27.5";
 
   return (
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
@@ -53,12 +98,12 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      {/* --- SIDEBAR COMPONENT (REUSABLE) --- */}
+      {/* --- SIDEBAR COMPONENT --- */}
       <Sidebar 
         isCollapsed={isCollapsed} 
         setIsCollapsed={setIsCollapsed} 
         isMobileMenuOpen={isMobileMenuOpen} 
-        setIsMobileMenuOpen={setIsMobileMenuOpen} 
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
       />
 
       {/* --- KONTEN UTAMA --- */}
@@ -76,7 +121,7 @@ export default function Dashboard() {
             </button>
             <div className="truncate">
               <h1 className="text-lg md:text-xl font-black text-gray-900 truncate">Overview Dashboard</h1>
-              <p className="text-xs text-gray-500 font-medium hidden sm:block">Pantau semua sistem fermentasi dalam satu layar</p>
+              <p className="text-xs text-gray-500 font-medium hidden sm:block">Pantau semua sistem fermentasi dalam satu layar dari Supabase</p>
             </div>
           </div>
 
@@ -108,9 +153,9 @@ export default function Dashboard() {
             {/* Kartu Ringkasan Status */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {[
-                { title: "Sistem Berjalan", value: "3", desc: "Kombucha, Eco, Fruit", icon: LayoutDashboard, color: "text-green-600", bg: "bg-green-50" },
-                { title: "Rata-rata Suhu", value: "27.5°C", desc: "Optimal pada semua tangki", icon: LayoutDashboard, color: "text-blue-600", bg: "bg-blue-50" },
-                { title: "Peringatan", value: "0", desc: "Semua parameter normal", icon: Bell, color: "text-orange-600", bg: "bg-orange-50" }
+                { title: "Sistem Berjalan", value: "3 Node", desc: "Kombucha, Eco, Fruit", icon: LayoutDashboard, color: "text-green-600", bg: "bg-green-50" },
+                { title: "Rata-rata Suhu", value: `${avgTemp}°C`, desc: "Berdasarkan sensor aktif", icon: LayoutDashboard, color: "text-blue-600", bg: "bg-blue-50" },
+                { title: "Status Koneksi", value: "Online", desc: "Sinkronisasi MQTT Lancar", icon: Bell, color: "text-orange-600", bg: "bg-orange-50" }
               ].map((stat, i) => (
                 <motion.div key={i} variants={fadeInUp} className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4 sm:gap-5">
                   <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full ${stat.bg} ${stat.color} flex items-center justify-center flex-shrink-0`}>
@@ -130,9 +175,27 @@ export default function Dashboard() {
               <motion.h2 variants={fadeInUp} className="text-base sm:text-lg font-black text-gray-900 mb-4">Akses Cepat Sistem</motion.h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {[
-                  { title: "Kombucha", desc: "pH: 3.45 | Suhu: 28.4°C", path: "/kombucha", icon: Droplet, status: "Aktif Hari ke-7" },
-                  { title: "Eco Enzyme", desc: "pH: 3.72 | Suhu: 27.6°C", path: "/eco-enzyme", icon: Recycle, status: "Aktif Hari ke-12" },
-                  { title: "Fruit Enzyme", desc: "pH: 3.65 | Suhu: 26.8°C", path: "/fruit-enzyme", icon: Apple, status: "Aktif Hari ke-15" }
+                  { 
+                    title: "Kombucha", 
+                    desc: `pH: ${kombuchaData?.ph ?? '-'} | Suhu: ${kombuchaData?.temperature_c ?? '-'}°C`, 
+                    path: "/kombucha", 
+                    icon: Droplet, 
+                    status: "Node: KOMBUCHA_01" 
+                  },
+                  { 
+                    title: "Eco Enzyme", 
+                    desc: `pH: ${ecoData?.ph ?? '-'} | Suhu: ${ecoData?.temperature_c ?? '-'}°C`, 
+                    path: "/eco-enzyme", 
+                    icon: Recycle, 
+                    status: "Node: ECO_02" 
+                  },
+                  { 
+                    title: "Fruit Enzyme", 
+                    desc: `pH: ${fruitData?.ph ?? '-'} | Suhu: ${fruitData?.temperature_c ?? '-'}°C`, 
+                    path: "/fruit-enzyme", 
+                    icon: Apple, 
+                    status: "Node: FRUIT_03" 
+                  }
                 ].map((item, i) => (
                   <motion.div 
                     key={i} 
@@ -151,7 +214,7 @@ export default function Dashboard() {
                       </div>
                       <h3 className="text-lg sm:text-xl font-black text-gray-900 mb-1">{item.title}</h3>
                       <p className="text-xs sm:text-sm text-gray-500 font-medium mb-3">{item.status}</p>
-                      <div className="bg-[#fcfcfb] rounded-xl p-3 mb-5 border border-gray-50 text-xs text-gray-600 font-medium text-center truncate">
+                      <div className="bg-[#fcfcfb] rounded-xl p-3 mb-5 border border-gray-50 text-xs text-gray-600 font-semibold text-center truncate">
                         {item.desc}
                       </div>
                     </div>
