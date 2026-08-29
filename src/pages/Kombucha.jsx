@@ -109,6 +109,23 @@ const INDICATOR_MAP = {
 // HELPER
 // =====================================================================
 
+// Jumlah record berdasarkan periode.
+// Sensor mengirim data setiap 30 detik.
+const getRecordLimit = (timeRange) => {
+  switch (timeRange) {
+    case '12 Jam':
+      return 1440;
+    case '24 Jam':
+      return 2880;
+    case '3 Hari':
+      return 8640;
+    case '7 Hari':
+      return 20160;
+    default:
+      return 2880;
+  }
+};
+
 const getDateRange = (selectedDate, selectedTimeRange) => {
   const start = new Date(`${selectedDate}T00:00:00`);
   let end;
@@ -263,6 +280,11 @@ export default function Kombucha() {
     ]
   );
 
+  const recordLimit = useMemo(
+    () => getRecordLimit(selectedTimeRange),
+    [selectedTimeRange]
+  );
+
   // ===================================================================
   // LOAD DATA BI
   // ===================================================================
@@ -276,7 +298,7 @@ export default function Kombucha() {
           node_id: selectedNode,
           start: dateRange.start,
           end: dateRange.end,
-          limit: 100,
+          limit: recordLimit,
         });
 
         if (!isMounted) {
@@ -323,6 +345,7 @@ export default function Kombucha() {
     selectedNode,
     dateRange.start,
     dateRange.end,
+    recordLimit,
     POLLING_INTERVAL,
   ]);
 
@@ -346,10 +369,20 @@ export default function Kombucha() {
     );
   }, [rawData]);
 
-  const totalRows =
-    Number(
+  const totalRows = useMemo(() => {
+    const backendCount = Number(
       biData?.overview?.total_readings
-    ) || 0;
+    );
+
+    if (
+      Number.isFinite(backendCount) &&
+      backendCount >= 0
+    ) {
+      return backendCount;
+    }
+
+    return timeSeries.length;
+  }, [biData, timeSeries]);
 
   const sensorStatus =
     biData?.sensor_status || {};
@@ -1239,7 +1272,7 @@ export default function Kombucha() {
                   <p className="text-xs text-gray-400 mb-4">
                     Total Record:{' '}
                     {apiAvailable
-                      ? totalRows
+                      ? totalRows.toLocaleString('id-ID')
                       : '-'}
                   </p>
 
