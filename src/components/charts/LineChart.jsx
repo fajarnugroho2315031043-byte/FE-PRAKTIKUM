@@ -1,93 +1,299 @@
 // src/components/charts/LineChart.jsx
-import React from 'react';
+import React, { useMemo } from "react";
 
-export default function LineChart({ data = [], title = "Grafik Sensor", dataKey = "temperature_c", color = "#dc2626", unit = "" }) {
-  // Jika data kosong
+export default function LineChart({
+  data = [],
+  title = "Grafik Sensor",
+  dataKey = "temperature_c",
+  color = "#16a34a",
+  unit = "",
+}) {
+  // =========================
+  // DATA KOSONG
+  // =========================
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between h-64">
-        <h3 className="text-base font-black text-gray-900 mb-2">{title}</h3>
-        <div className="flex-1 flex items-center justify-center text-xs text-gray-400">
+      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm">
+        <h3 className="text-base font-black text-gray-900">
+          {title}
+        </h3>
+
+        <div className="h-64 flex items-center justify-center text-xs text-gray-400">
           Belum ada data riwayat untuk ditampilkan
         </div>
       </div>
     );
   }
 
-  // Ekstraksi nilai dan normalisasi untuk koordinat SVG
-  const values = data.map(item => Number(item[dataKey]) || 0);
+  // =========================
+  // NORMALISASI DATA
+  // =========================
+  const chartData = useMemo(() => {
+    return data
+      .map((item) => ({
+        value: Number(item[dataKey]),
+        timestamp:
+          item.timestamp ||
+          item.created_at ||
+          item.createdAt ||
+          item.time ||
+          item.datetime ||
+          null,
+      }))
+      .filter((item) => Number.isFinite(item.value));
+  }, [data, dataKey]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm">
+        <h3 className="text-base font-black text-gray-900">
+          {title}
+        </h3>
+
+        <div className="h-64 flex items-center justify-center text-xs text-gray-400">
+          Data sensor tidak valid
+        </div>
+      </div>
+    );
+  }
+
+  // =========================
+  // NILAI MIN / MAX
+  // =========================
+  const values = chartData.map((item) => item.value);
+
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
-  const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
 
-  const width = 800;
-  const height = 120;
+  const range = maxVal - minVal || 1;
 
-  const points = data.map((item, index) => {
-    const val = Number(item[dataKey]) || 0;
-    const x = (index / (data.length - 1 || 1)) * width;
-    // Normalisasi posisi Y (SVG sumbu Y terbalik)
-    const y = height - ((val - minVal) / range) * (height - 20) - 10;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
+  const latestValue = values[values.length - 1];
 
-  const latestValue = values[values.length - 1] ?? 0;
+  // Berikan sedikit ruang atas dan bawah
+  const paddingValue = range * 0.1;
+
+  const chartMin = minVal - paddingValue;
+  const chartMax = maxVal + paddingValue;
+  const chartRange = chartMax - chartMin || 1;
+
+  // =========================
+  // SVG
+  // =========================
+  const width = 1200;
+  const height = 320;
+
+  const paddingLeft = 55;
+  const paddingRight = 20;
+  const paddingTop = 25;
+  const paddingBottom = 45;
+
+  const graphWidth = width - paddingLeft - paddingRight;
+  const graphHeight = height - paddingTop - paddingBottom;
+
+  // =========================
+  // HITUNG KOORDINAT
+  // =========================
+  const coordinates = chartData.map((item, index) => {
+    const x =
+      paddingLeft +
+      (index / Math.max(chartData.length - 1, 1)) * graphWidth;
+
+    const y =
+      paddingTop +
+      (1 - (item.value - chartMin) / chartRange) * graphHeight;
+
+    return {
+      x,
+      y,
+      value: item.value,
+      timestamp: item.timestamp,
+    };
+  });
+
+  // =========================
+  // POLYLINE
+  // =========================
+  const points = coordinates
+    .map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+    .join(" ");
+
+  // =========================
+  // FORMAT WAKTU
+  // =========================
+  const formatTime = (timestamp) => {
+    if (!timestamp) return "";
+
+    const date = new Date(timestamp);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    return date.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  // =========================
+  // LABEL WAKTU
+  // =========================
+  const labelIndexes = [];
+
+  if (chartData.length > 1) {
+    const desiredLabels = 6;
+
+    for (let i = 0; i < desiredLabels; i++) {
+      const index = Math.round(
+        (i / (desiredLabels - 1)) * (chartData.length - 1)
+      );
+
+      if (!labelIndexes.includes(index)) {
+        labelIndexes.push(index);
+      }
+    }
+  } else {
+    labelIndexes.push(0);
+  }
+
+  // =========================
+  // GRID HORIZONTAL
+  // =========================
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const y = paddingTop + ratio * graphHeight;
+
+    const value = chartMax - ratio * chartRange;
+
+    return {
+      y,
+      value,
+    };
+  });
 
   return (
-    <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between">
-      <div className="flex justify-between items-center mb-4">
+    <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm">
+      {/* HEADER */}
+      <div className="flex justify-between items-start mb-5">
         <div>
-          <h3 className="text-base font-black text-gray-900">{title}</h3>
-          <p className="text-xs text-gray-400">Total {data.length} titik data terekam</p>
+          <h3 className="text-base font-black text-gray-900">
+            {title}
+          </h3>
+
+          <p className="text-xs text-gray-400 mt-1">
+            Data monitoring ({chartData.length.toLocaleString("id-ID")} titik)
+          </p>
         </div>
+
         <div className="text-right">
-          <span className="text-sm font-black text-gray-900">{latestValue} {unit}</span>
-          <span className="block text-[10px] text-gray-400 font-bold uppercase">Terakhir</span>
+          <div
+            className="text-xl font-black"
+            style={{ color }}
+          >
+            {latestValue.toFixed(2)} {unit}
+          </div>
+
+          <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wide">
+            Terbaru
+          </span>
         </div>
       </div>
 
-      {/* SVG Container */}
-      <div className="relative w-full h-36 bg-[#fcfcfb] rounded-2xl border border-gray-100 p-3 flex flex-col justify-between">
-        <div className="absolute left-2 top-2 text-[9px] font-bold text-gray-400">
-          Max: {maxVal.toFixed(1)} {unit}
-        </div>
-        <div className="absolute left-2 bottom-2 text-[9px] font-bold text-gray-400">
-          Min: {minVal.toFixed(1)} {unit}
-        </div>
+      {/* CHART */}
+      <div className="relative w-full h-[340px] bg-[#fcfcfb] rounded-2xl border border-gray-100 overflow-hidden">
+        <svg
+          className="w-full h-full"
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+        >
+          {/* GRID */}
+          {gridLines.map((line, index) => (
+            <g key={index}>
+              <line
+                x1={paddingLeft}
+                x2={width - paddingRight}
+                y1={line.y}
+                y2={line.y}
+                stroke="#e5e7eb"
+                strokeWidth="1"
+                strokeDasharray="4 5"
+              />
 
-        <div className="relative z-10 w-full h-24 flex items-center pl-12 pr-2">
-          <svg className="w-full h-full overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-            <polyline 
-              fill="none" 
-              stroke={color} 
-              strokeWidth="2.5" 
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              points={points}
-            />
-            {data.map((_, index) => {
-              const pts = points.split(" ");
-              if (!pts[index]) return null;
-              const [cx, cy] = pts[index].split(",");
-              return (
-                <circle 
-                  key={index} 
-                  cx={cx} 
-                  cy={cy} 
-                  r="3" 
-                  fill="white" 
-                  stroke={color} 
-                  strokeWidth="2" 
-                />
-              );
-            })}
-          </svg>
-        </div>
+              <text
+                x={paddingLeft - 10}
+                y={line.y + 4}
+                textAnchor="end"
+                fontSize="12"
+                fill="#9ca3af"
+              >
+                {line.value.toFixed(1)}
+              </text>
+            </g>
+          ))}
 
-        <div className="flex justify-between pl-12 pr-2 text-[9px] font-bold text-gray-400 border-t border-gray-100 pt-1">
-          <span>Awal Sesi</span>
-          <span>Waktu Nyata (Real-time)</span>
+          {/* AXIS BOTTOM */}
+          <line
+            x1={paddingLeft}
+            x2={width - paddingRight}
+            y1={height - paddingBottom}
+            y2={height - paddingBottom}
+            stroke="#e5e7eb"
+            strokeWidth="1"
+          />
+
+          {/* GRAPH LINE */}
+          <polyline
+            fill="none"
+            stroke={color}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={points}
+          />
+
+          {/* LABEL WAKTU */}
+          {labelIndexes.map((index) => {
+            const point = coordinates[index];
+
+            if (!point) return null;
+
+            return (
+              <g key={index}>
+                <text
+                  x={point.x}
+                  y={height - 18}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill="#9ca3af"
+                  fontWeight="600"
+                >
+                  {formatTime(point.timestamp) ||
+                    `Data ${index + 1}`}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* INFO DATA */}
+        <div className="absolute top-3 right-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg border border-gray-100 shadow-sm">
+          <span className="text-[10px] font-bold text-gray-400">
+            Interval 30 detik
+          </span>
         </div>
+      </div>
+
+      {/* FOOTER */}
+      <div className="flex justify-between items-center mt-3 text-[10px] font-bold text-gray-400">
+        <span>
+          Min: {minVal.toFixed(2)} {unit}
+        </span>
+
+        <span>
+          {chartData.length.toLocaleString("id-ID")} data
+        </span>
+
+        <span>
+          Max: {maxVal.toFixed(2)} {unit}
+        </span>
       </div>
     </div>
   );
