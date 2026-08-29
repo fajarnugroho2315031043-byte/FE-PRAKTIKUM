@@ -8,9 +8,7 @@ export default function LineChart({
   color = "#16a34a",
   unit = "",
 }) {
-  // =========================
-  // DATA KOSONG
-  // =========================
+  // Data kosong
   if (!data || data.length === 0) {
     return (
       <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm">
@@ -25,9 +23,7 @@ export default function LineChart({
     );
   }
 
-  // =========================
-  // NORMALISASI DATA
-  // =========================
+  // Normalisasi data
   const chartData = useMemo(() => {
     return data
       .map((item) => ({
@@ -57,28 +53,23 @@ export default function LineChart({
     );
   }
 
-  // =========================
-  // NILAI MIN / MAX
-  // =========================
+  // Nilai sensor
   const values = chartData.map((item) => item.value);
 
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
-
   const range = maxVal - minVal || 1;
 
   const latestValue = values[values.length - 1];
 
-  // Berikan sedikit ruang atas dan bawah
+  // Berikan sedikit ruang atas dan bawah grafik
   const paddingValue = range * 0.1;
 
   const chartMin = minVal - paddingValue;
   const chartMax = maxVal + paddingValue;
   const chartRange = chartMax - chartMin || 1;
 
-  // =========================
-  // SVG
-  // =========================
+  // Ukuran SVG
   const width = 1200;
   const height = 320;
 
@@ -90,9 +81,7 @@ export default function LineChart({
   const graphWidth = width - paddingLeft - paddingRight;
   const graphHeight = height - paddingTop - paddingBottom;
 
-  // =========================
-  // HITUNG KOORDINAT
-  // =========================
+  // Koordinat grafik
   const coordinates = chartData.map((item, index) => {
     const x =
       paddingLeft +
@@ -110,16 +99,12 @@ export default function LineChart({
     };
   });
 
-  // =========================
-  // POLYLINE
-  // =========================
+  // Garis grafik
   const points = coordinates
     .map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`)
     .join(" ");
 
-  // =========================
-  // FORMAT WAKTU
-  // =========================
+  // Format waktu
   const formatTime = (timestamp) => {
     if (!timestamp) return "";
 
@@ -130,18 +115,17 @@ export default function LineChart({
     return date.toLocaleTimeString("id-ID", {
       hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit",
     });
   };
 
-  // =========================
-  // LABEL WAKTU
-  // =========================
+  // Label waktu hanya beberapa titik agar tidak penuh
   const labelIndexes = [];
 
-  if (chartData.length > 1) {
-    const desiredLabels = 6;
+  const desiredLabels = 7;
 
+  if (chartData.length === 1) {
+    labelIndexes.push(0);
+  } else {
     for (let i = 0; i < desiredLabels; i++) {
       const index = Math.round(
         (i / (desiredLabels - 1)) * (chartData.length - 1)
@@ -151,13 +135,9 @@ export default function LineChart({
         labelIndexes.push(index);
       }
     }
-  } else {
-    labelIndexes.push(0);
   }
 
-  // =========================
-  // GRID HORIZONTAL
-  // =========================
+  // Garis grid horizontal
   const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
     const y = paddingTop + ratio * graphHeight;
 
@@ -171,6 +151,7 @@ export default function LineChart({
 
   return (
     <div className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm">
+
       {/* HEADER */}
       <div className="flex justify-between items-start mb-5">
         <div>
@@ -199,11 +180,13 @@ export default function LineChart({
 
       {/* CHART */}
       <div className="relative w-full h-[340px] bg-[#fcfcfb] rounded-2xl border border-gray-100 overflow-hidden">
+
         <svg
           className="w-full h-full"
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
         >
+
           {/* GRID */}
           {gridLines.map((line, index) => (
             <g key={index}>
@@ -229,7 +212,7 @@ export default function LineChart({
             </g>
           ))}
 
-          {/* AXIS BOTTOM */}
+          {/* AXIS */}
           <line
             x1={paddingLeft}
             x2={width - paddingRight}
@@ -239,7 +222,7 @@ export default function LineChart({
             strokeWidth="1"
           />
 
-          {/* GRAPH LINE */}
+          {/* GRAPH */}
           <polyline
             fill="none"
             stroke={color}
@@ -256,24 +239,22 @@ export default function LineChart({
             if (!point) return null;
 
             return (
-              <g key={index}>
-                <text
-                  x={point.x}
-                  y={height - 18}
-                  textAnchor="middle"
-                  fontSize="11"
-                  fill="#9ca3af"
-                  fontWeight="600"
-                >
-                  {formatTime(point.timestamp) ||
-                    `Data ${index + 1}`}
-                </text>
-              </g>
+              <text
+                key={index}
+                x={point.x}
+                y={height - 18}
+                textAnchor="middle"
+                fontSize="11"
+                fill="#9ca3af"
+                fontWeight="600"
+              >
+                {formatTime(point.timestamp) || `Data ${index + 1}`}
+              </text>
             );
           })}
         </svg>
 
-        {/* INFO DATA */}
+        {/* INTERVAL */}
         <div className="absolute top-3 right-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg border border-gray-100 shadow-sm">
           <span className="text-[10px] font-bold text-gray-400">
             Interval 30 detik
