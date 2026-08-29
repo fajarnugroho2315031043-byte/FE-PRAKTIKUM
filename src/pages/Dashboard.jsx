@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
+
 import {
   LayoutDashboard,
   Droplet,
@@ -15,11 +16,23 @@ import {
 import Sidebar from '../components/Sidebar';
 import { fetchBI } from '../services/api';
 
+
+/*
+|--------------------------------------------------------------------------
+| ANIMATION
+|--------------------------------------------------------------------------
+*/
+
 const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: {
+    opacity: 0,
+    y: 20,
+  },
+
   visible: {
     opacity: 1,
     y: 0,
+
     transition: {
       duration: 0.5,
       ease: 'easeOut',
@@ -27,362 +40,1109 @@ const fadeInUp = {
   },
 };
 
+
 const staggerContainer = {
-  hidden: { opacity: 0 },
+  hidden: {
+    opacity: 0,
+  },
+
   visible: {
     opacity: 1,
+
     transition: {
       staggerChildren: 0.1,
     },
   },
 };
 
+
+/*
+|--------------------------------------------------------------------------
+| NODE CONFIGURATION
+|--------------------------------------------------------------------------
+*/
+
 const NODE_CONFIG = {
+
   KOMBUCHA_01: {
     title: 'Kombucha',
     path: '/kombucha',
     icon: Droplet,
   },
+
   ECO_02: {
     title: 'Eco Enzyme',
     path: '/eco-enzyme',
     icon: Recycle,
   },
+
   FRUIT_03: {
     title: 'Fruit Enzyme',
     path: '/fruit-enzyme',
     icon: Apple,
   },
+
 };
 
-const getNodeStatus = (lastSeen) => {
+
+/*
+|--------------------------------------------------------------------------
+| NODE STATUS
+|--------------------------------------------------------------------------
+*/
+
+const getNodeStatus = (
+  lastSeen,
+  backendStatus = null
+) => {
+
+  /*
+   * Jika backend secara eksplisit mengatakan
+   * no_data.
+   */
+
+  if (
+    backendStatus === 'no_data'
+  ) {
+
+    return {
+      label: 'Belum Ada Data',
+      className:
+        'bg-gray-50 text-gray-600',
+      dotClassName:
+        'bg-gray-400',
+    };
+
+  }
+
+
+  /*
+   * Jika tidak ada last seen.
+   */
+
   if (!lastSeen) {
+
     return {
-      label: 'Offline',
-      className: 'bg-red-50 text-red-700',
-      dotClassName: 'bg-red-500',
+      label: 'Belum Ada Data',
+      className:
+        'bg-gray-50 text-gray-600',
+      dotClassName:
+        'bg-gray-400',
     };
+
   }
 
-  const lastSeenTime = new Date(lastSeen).getTime();
 
-  if (Number.isNaN(lastSeenTime)) {
+  const lastSeenTime =
+    new Date(lastSeen).getTime();
+
+
+  if (
+    Number.isNaN(lastSeenTime)
+  ) {
+
     return {
-      label: 'Offline',
-      className: 'bg-red-50 text-red-700',
-      dotClassName: 'bg-red-500',
+      label: 'Belum Ada Data',
+      className:
+        'bg-gray-50 text-gray-600',
+      dotClassName:
+        'bg-gray-400',
     };
+
   }
 
-  const ageSeconds = (Date.now() - lastSeenTime) / 1000;
 
-  if (ageSeconds <= 60) {
+  const ageSeconds =
+    Math.max(
+      (Date.now() - lastSeenTime) / 1000,
+      0
+    );
+
+
+  /*
+   * Online <= 60 detik
+   */
+
+  if (
+    ageSeconds <= 60
+  ) {
+
     return {
       label: 'Online',
-      className: 'bg-green-50 text-green-700',
-      dotClassName: 'bg-green-500',
+      className:
+        'bg-green-50 text-green-700',
+      dotClassName:
+        'bg-green-500',
     };
+
   }
 
-  if (ageSeconds <= 180) {
+
+  /*
+   * Warning <= 180 detik
+   */
+
+  if (
+    ageSeconds <= 180
+  ) {
+
     return {
       label: 'Warning',
-      className: 'bg-yellow-50 text-yellow-700',
-      dotClassName: 'bg-yellow-500',
+      className:
+        'bg-yellow-50 text-yellow-700',
+      dotClassName:
+        'bg-yellow-500',
     };
+
   }
+
+
+  /*
+   * Lebih dari 180 detik.
+   */
 
   return {
     label: 'Offline',
-    className: 'bg-red-50 text-red-700',
-    dotClassName: 'bg-red-500',
+    className:
+      'bg-red-50 text-red-700',
+    dotClassName:
+      'bg-red-500',
   };
+
 };
 
-const getLatestReading = (biData, nodeId) => {
-  if (!biData || !biData.latest) {
+
+/*
+|--------------------------------------------------------------------------
+| GET LATEST READING PER NODE
+|--------------------------------------------------------------------------
+|
+| PRIORITAS:
+|
+| 1. latest_by_node
+| 2. latest jika cocok dengan node
+| 3. raw_data.data
+|
+|--------------------------------------------------------------------------
+*/
+
+const getLatestReading = (
+  biData,
+  nodeId
+) => {
+
+  if (!biData) {
     return null;
   }
 
-  const latest = biData.latest;
 
-  if (Array.isArray(latest)) {
-    return (
+  /*
+   * ============================================================
+   * 1. LATEST BY NODE
+   * ============================================================
+   */
+
+  const latestByNode =
+    biData.latest_by_node;
+
+
+  if (
+    latestByNode &&
+    typeof latestByNode === 'object' &&
+    !Array.isArray(latestByNode)
+  ) {
+
+    const nodeData =
+      latestByNode[nodeId];
+
+
+    if (
+      nodeData
+    ) {
+
+      return nodeData;
+
+    }
+
+  }
+
+
+  /*
+   * ============================================================
+   * 2. LATEST
+   * ============================================================
+   */
+
+  const latest =
+    biData.latest;
+
+
+  if (
+    Array.isArray(latest)
+  ) {
+
+    const found =
       latest.find(
         (item) =>
           item?.node_id === nodeId ||
           item?.nodeId === nodeId
-      ) || null
-    );
+      );
+
+
+    if (found) {
+      return found;
+    }
+
   }
 
-  if (typeof latest === 'object') {
-    if (latest[nodeId]) {
+
+  if (
+    latest &&
+    typeof latest === 'object' &&
+    !Array.isArray(latest)
+  ) {
+
+    /*
+     * latest berbentuk node map.
+     */
+
+    if (
+      latest[nodeId]
+    ) {
+
       return latest[nodeId];
+
     }
+
+
+    /*
+     * latest berbentuk satu row sensor.
+     */
 
     if (
       latest.node_id === nodeId ||
       latest.nodeId === nodeId
     ) {
+
       return latest;
+
     }
+
   }
 
-  return null;
-};
 
-const getNodeLastSeen = (biData, nodeId) => {
-  const nodeStatus = biData?.node_status;
+  /*
+   * ============================================================
+   * 3. RAW DATA FALLBACK
+   * ============================================================
+   */
 
-  if (!nodeStatus) {
-    return null;
-  }
+  const rawData =
+    biData?.raw_data?.data;
 
-  if (Array.isArray(nodeStatus)) {
-    const node = nodeStatus.find(
-      (item) =>
-        item?.node_id === nodeId ||
-        item?.nodeId === nodeId
-    );
 
-    return node?.last_seen || node?.lastSeen || null;
-  }
+  if (
+    Array.isArray(rawData)
+  ) {
 
-  if (typeof nodeStatus === 'object') {
-    const node = nodeStatus[nodeId];
-
-    if (node) {
-      return node?.last_seen || node?.lastSeen || null;
-    }
-  }
-
-  return null;
-};
-
-export default function Dashboard() {
-  const location = useLocation();
-  const currentPath = location.pathname;
-
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
-  const [biData, setBiData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [apiAvailable, setApiAvailable] = useState(true);
-
-  const POLLING_INTERVAL =
-    Number(import.meta.env.VITE_POLLING_INTERVAL) || 10000;
-
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [currentPath]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadDashboard = async () => {
-      try {
-        setError(null);
-
-        const result = await fetchBI();
-
-        if (!isMounted) {
-          return;
-        }
-
-        setBiData(result);
-        setApiAvailable(true);
-      } catch (err) {
-        console.error(
-          '[DASHBOARD] Gagal memuat data:',
-          err
+    const rows =
+      rawData
+        .filter(
+          (row) =>
+            row?.node_id === nodeId ||
+            row?.nodeId === nodeId
+        )
+        .sort(
+          (a, b) =>
+            new Date(
+              b.timestamp ||
+              b.received_at
+            ).getTime() -
+            new Date(
+              a.timestamp ||
+              a.received_at
+            ).getTime()
         );
 
-        if (isMounted) {
-          setApiAvailable(false);
-          setError(
-            'Backend tidak dapat diakses. Data dashboard belum tersedia.'
+
+    if (
+      rows.length > 0
+    ) {
+
+      return rows[0];
+
+    }
+
+  }
+
+
+  return null;
+
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| GET NODE STATUS DATA
+|--------------------------------------------------------------------------
+*/
+
+const getNodeStatusData = (
+  biData,
+  nodeId
+) => {
+
+  const nodeStatus =
+    biData?.node_status;
+
+
+  if (!nodeStatus) {
+
+    return null;
+
+  }
+
+
+  /*
+   * ============================================================
+   * ARRAY
+   * ============================================================
+   */
+
+  if (
+    Array.isArray(nodeStatus)
+  ) {
+
+    return (
+      nodeStatus.find(
+        (item) =>
+          item?.node_id === nodeId ||
+          item?.nodeId === nodeId
+      ) || null
+    );
+
+  }
+
+
+  /*
+   * ============================================================
+   * OBJECT
+   * ============================================================
+   */
+
+  if (
+    typeof nodeStatus === 'object'
+  ) {
+
+    return (
+      nodeStatus[nodeId] ||
+      null
+    );
+
+  }
+
+
+  return null;
+
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| GET LAST SEEN
+|--------------------------------------------------------------------------
+*/
+
+const getNodeLastSeen = (
+  biData,
+  nodeId,
+  reading
+) => {
+
+  const status =
+    getNodeStatusData(
+      biData,
+      nodeId
+    );
+
+
+  /*
+   * Backend node_status.
+   */
+
+  const statusLastSeen =
+    status?.last_seen ??
+    status?.lastSeen ??
+    status?.timestamp ??
+    null;
+
+
+  if (
+    statusLastSeen
+  ) {
+
+    return statusLastSeen;
+
+  }
+
+
+  /*
+   * Fallback dari latest reading.
+   */
+
+  return (
+    reading?.timestamp ??
+    reading?.received_at ??
+    null
+  );
+
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| GET BACKEND STATUS
+|--------------------------------------------------------------------------
+*/
+
+const getBackendNodeStatus = (
+  biData,
+  nodeId
+) => {
+
+  const status =
+    getNodeStatusData(
+      biData,
+      nodeId
+    );
+
+
+  return (
+    status?.status ??
+    null
+  );
+
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| FORMAT VALUE
+|--------------------------------------------------------------------------
+*/
+
+const fmt = (
+  value,
+  loading = false
+) => {
+
+  if (
+    loading
+  ) {
+
+    return '...';
+
+  }
+
+
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+
+    return '-';
+
+  }
+
+
+  return value;
+
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| FORMAT DATE
+|--------------------------------------------------------------------------
+*/
+
+const formatLastSeen = (
+  value
+) => {
+
+  if (!value) {
+
+    return 'Belum ada data';
+
+  }
+
+
+  const date =
+    new Date(value);
+
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+
+    return 'Belum ada data';
+
+  }
+
+
+  return date.toLocaleString(
+    'id-ID',
+    {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }
+  );
+
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| DASHBOARD
+|--------------------------------------------------------------------------
+*/
+
+export default function Dashboard() {
+
+  const location =
+    useLocation();
+
+  const currentPath =
+    location.pathname;
+
+
+  const [
+    isMobileMenuOpen,
+    setIsMobileMenuOpen,
+  ] = useState(false);
+
+
+  const [
+    isCollapsed,
+    setIsCollapsed,
+  ] = useState(false);
+
+
+  const [
+    biData,
+    setBiData,
+  ] = useState(null);
+
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+
+  const [
+    error,
+    setError,
+  ] = useState(null);
+
+
+  const [
+    apiAvailable,
+    setApiAvailable,
+  ] = useState(true);
+
+
+  const POLLING_INTERVAL =
+    Number(
+      import.meta.env.VITE_POLLING_INTERVAL
+    ) || 10000;
+
+
+  /*
+   * ============================================================
+   * MOBILE MENU
+   * ============================================================
+   */
+
+  useEffect(() => {
+
+    setIsMobileMenuOpen(
+      false
+    );
+
+  }, [
+    currentPath,
+  ]);
+
+
+  /*
+   * ============================================================
+   * LOAD BI DATA
+   * ============================================================
+   */
+
+  useEffect(() => {
+
+    let isMounted = true;
+
+
+    const loadDashboard =
+      async () => {
+
+        try {
+
+          const result =
+            await fetchBI();
+
+
+          if (
+            !isMounted
+          ) {
+
+            return;
+
+          }
+
+
+          setBiData(
+            result
           );
+
+          setApiAvailable(
+            true
+          );
+
+          setError(
+            null
+          );
+
+        } catch (err) {
+
+          console.error(
+            '[DASHBOARD] Gagal memuat data:',
+            err
+          );
+
+
+          if (
+            isMounted
+          ) {
+
+            setApiAvailable(
+              false
+            );
+
+            setError(
+              'Backend tidak dapat diakses. Data dashboard belum tersedia.'
+            );
+
+          }
+
+        } finally {
+
+          if (
+            isMounted
+          ) {
+
+            setLoading(
+              false
+            );
+
+          }
+
         }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
+
+      };
+
 
     loadDashboard();
 
-    const intervalId = setInterval(
-      loadDashboard,
-      POLLING_INTERVAL
-    );
 
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
-  }, [POLLING_INTERVAL]);
-
-  const nodeIds = Object.keys(NODE_CONFIG);
-
-  const nodeReadings = nodeIds.reduce(
-    (result, nodeId) => {
-      result[nodeId] = getLatestReading(
-        biData,
-        nodeId
+    const intervalId =
+      setInterval(
+        loadDashboard,
+        POLLING_INTERVAL
       );
 
-      return result;
-    },
-    {}
-  );
 
-  const temperatures = nodeIds
-    .map(
-      (nodeId) =>
-        nodeReadings[nodeId]?.temperature_c
-    )
-    .filter(
-      (value) =>
-        value !== null &&
-        value !== undefined &&
-        !Number.isNaN(Number(value))
-    )
-    .map(Number);
+    return () => {
+
+      isMounted = false;
+
+      clearInterval(
+        intervalId
+      );
+
+    };
+
+  }, [
+    POLLING_INTERVAL,
+  ]);
+
+
+  /*
+   * ============================================================
+   * NODE IDS
+   * ============================================================
+   */
+
+  const nodeIds =
+    Object.keys(
+      NODE_CONFIG
+    );
+
+
+  /*
+   * ============================================================
+   * LATEST READING
+   * ============================================================
+   */
+
+  const nodeReadings =
+    nodeIds.reduce(
+      (
+        result,
+        nodeId
+      ) => {
+
+        result[nodeId] =
+          getLatestReading(
+            biData,
+            nodeId
+          );
+
+        return result;
+
+      },
+      {}
+    );
+
+
+  /*
+   * ============================================================
+   * NODE STATUS
+   * ============================================================
+   */
+
+  const nodeStatuses =
+    nodeIds.reduce(
+      (
+        result,
+        nodeId
+      ) => {
+
+        const reading =
+          nodeReadings[nodeId];
+
+
+        const backendStatus =
+          getBackendNodeStatus(
+            biData,
+            nodeId
+          );
+
+
+        const lastSeen =
+          getNodeLastSeen(
+            biData,
+            nodeId,
+            reading
+          );
+
+
+        result[nodeId] =
+          getNodeStatus(
+            lastSeen,
+            backendStatus
+          );
+
+
+        return result;
+
+      },
+      {}
+    );
+
+
+  /*
+   * ============================================================
+   * ONLINE NODE COUNT
+   * ============================================================
+   */
+
+  const onlineNodes =
+    apiAvailable
+      ? nodeIds.filter(
+          (nodeId) =>
+            nodeStatuses[
+              nodeId
+            ]?.label ===
+            'Online'
+        )
+      : [];
+
+
+  /*
+   * ============================================================
+   * AVERAGE TEMPERATURE
+   * ============================================================
+   *
+   * Menggunakan latest masing-masing node
+   * yang tersedia.
+   * ============================================================
+   */
+
+  const temperatures =
+    nodeIds
+      .map(
+        (nodeId) =>
+          nodeReadings[
+            nodeId
+          ]?.temperature_c
+      )
+      .filter(
+        (value) =>
+          value !== null &&
+          value !== undefined &&
+          value !== '' &&
+          Number.isFinite(
+            Number(value)
+          )
+      )
+      .map(Number);
+
 
   const avgTemp =
     temperatures.length > 0
       ? (
           temperatures.reduce(
-            (sum, value) => sum + value,
+            (
+              sum,
+              value
+            ) =>
+              sum + value,
             0
-          ) / temperatures.length
+          ) /
+          temperatures.length
         ).toFixed(1)
       : '-';
 
-  const onlineNodes = apiAvailable
-    ? nodeIds.filter((nodeId) => {
-        const lastSeen = getNodeLastSeen(
-          biData,
-          nodeId
-        );
 
-        return (
-          getNodeStatus(lastSeen).label ===
-          'Online'
-        );
-      })
-    : [];
+  /*
+   * ============================================================
+   * CONNECTION STATUS
+   * ============================================================
+   */
 
-  const connectionStatus = loading
-    ? {
-        label: 'Memuat',
-        className: 'bg-gray-50 text-gray-600',
-        dotClassName: 'bg-gray-400',
-      }
-    : !apiAvailable
-    ? {
-        label: 'Tidak Tersedia',
-        className: 'bg-gray-50 text-gray-600',
-        dotClassName: 'bg-gray-400',
-      }
-    : onlineNodes.length === nodeIds.length
-    ? {
-        label: 'Online',
-        className: 'bg-green-50 text-green-700',
-        dotClassName: 'bg-green-500',
-      }
-    : onlineNodes.length > 0
-    ? {
-        label: 'Sebagian',
-        className: 'bg-yellow-50 text-yellow-700',
-        dotClassName: 'bg-yellow-500',
-      }
-    : {
-        label: 'Offline',
-        className: 'bg-red-50 text-red-700',
-        dotClassName: 'bg-red-500',
-      };
+  const connectionStatus =
+    loading
+      ? {
 
-  const fmt = (value) => {
-    if (loading) {
-      return '...';
-    }
+          label: 'Memuat',
 
-    if (
-      value === null ||
-      value === undefined ||
-      value === ''
-    ) {
-      return '-';
-    }
+          className:
+            'bg-gray-50 text-gray-600',
 
-    return value;
-  };
+          dotClassName:
+            'bg-gray-400',
+
+        }
+
+      : !apiAvailable
+      ? {
+
+          label: 'Tidak Tersedia',
+
+          className:
+            'bg-gray-50 text-gray-600',
+
+          dotClassName:
+            'bg-gray-400',
+
+        }
+
+      : onlineNodes.length ===
+        nodeIds.length
+      ? {
+
+          label: 'Online',
+
+          className:
+            'bg-green-50 text-green-700',
+
+          dotClassName:
+            'bg-green-500',
+
+        }
+
+      : onlineNodes.length > 0
+      ? {
+
+          label: 'Sebagian',
+
+          className:
+            'bg-yellow-50 text-yellow-700',
+
+          dotClassName:
+            'bg-yellow-500',
+
+        }
+
+      : {
+
+          label: 'Offline',
+
+          className:
+            'bg-red-50 text-red-700',
+
+          dotClassName:
+            'bg-red-500',
+
+        };
+
+
+  /*
+   * ============================================================
+   * RENDER
+   * ============================================================
+   */
 
   return (
+
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
 
+
+      {/* ========================================================
+          MOBILE OVERLAY
+      ======================================================== */}
+
       <AnimatePresence>
+
         {isMobileMenuOpen && (
+
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+
+            initial={{
+              opacity: 0,
+            }}
+
+            animate={{
+              opacity: 1,
+            }}
+
+            exit={{
+              opacity: 0,
+            }}
+
             onClick={() =>
-              setIsMobileMenuOpen(false)
+              setIsMobileMenuOpen(
+                false
+              )
             }
+
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-40 md:hidden"
+
           />
+
         )}
+
       </AnimatePresence>
 
+
+      {/* ========================================================
+          SIDEBAR
+      ======================================================== */}
+
       <Sidebar
-        isCollapsed={isCollapsed}
-        setIsCollapsed={setIsCollapsed}
-        isMobileMenuOpen={isMobileMenuOpen}
+
+        isCollapsed={
+          isCollapsed
+        }
+
+        setIsCollapsed={
+          setIsCollapsed
+        }
+
+        isMobileMenuOpen={
+          isMobileMenuOpen
+        }
+
         setIsMobileMenuOpen={
           setIsMobileMenuOpen
         }
+
       />
+
+
+      {/* ========================================================
+          MAIN
+      ======================================================== */}
 
       <main className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
 
+
+        {/* ======================================================
+            HEADER
+        ====================================================== */}
+
         <header className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 lg:px-10 z-10 flex-shrink-0">
+
 
           <div className="flex items-center gap-3 md:gap-4">
 
+
             <button
+
               className="md:hidden p-2 rounded-xl bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+
               onClick={() =>
-                setIsMobileMenuOpen(true)
+                setIsMobileMenuOpen(
+                  true
+                )
               }
+
               aria-label="Open Navigation Menu"
+
             >
+
               <Menu size={20} />
+
             </button>
+
 
             <div className="truncate">
 
               <h1 className="text-lg md:text-xl font-black text-gray-900 truncate">
+
                 Overview Dashboard
+
               </h1>
 
+
               <p className="text-xs text-gray-500 font-medium hidden sm:block">
+
                 {loading
                   ? 'Memuat data dari backend...'
                   : error
                   ? error
                   : 'Data monitoring dari seluruh node'}
+
               </p>
 
             </div>
+
           </div>
 
+
           <div className="flex items-center gap-3 lg:gap-6">
+
 
             <div className="hidden sm:flex items-center bg-gray-50 rounded-full px-4 py-2 border border-gray-100">
 
@@ -399,125 +1159,203 @@ export default function Dashboard() {
 
             </div>
 
+
             <button
+
               className="relative w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-600 hover:text-green-700 hover:bg-green-50 transition-colors"
+
               aria-label="Notifikasi"
+
             >
+
               <Bell size={18} />
+
             </button>
 
           </div>
+
         </header>
+
+
+        {/* ======================================================
+            CONTENT
+        ====================================================== */}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
 
+
           <motion.div
+
             initial="hidden"
+
             animate="visible"
-            variants={staggerContainer}
+
+            variants={
+              staggerContainer
+            }
+
             className="max-w-7xl mx-auto space-y-6 sm:space-y-8"
+
           >
 
-            {/* Ringkasan Sistem */}
+
+            {/* ==================================================
+                SUMMARY
+            ================================================== */}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
 
+
+              {/* SISTEM */}
+
               <motion.div
-                variants={fadeInUp}
+
+                variants={
+                  fadeInUp
+                }
+
                 className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4 sm:gap-5"
+
               >
 
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
+
                   <LayoutDashboard
                     size={22}
                     strokeWidth={2.5}
                   />
+
                 </div>
+
 
                 <div className="min-w-0">
 
                   <p className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5">
+
                     Sistem Berjalan
+
                   </p>
 
+
                   <h3 className="text-xl sm:text-2xl font-black text-gray-900">
+
                     {loading
                       ? '...'
                       : !apiAvailable
                       ? '-'
                       : `${onlineNodes.length}/${nodeIds.length} Node`}
+
                   </h3>
 
+
                   <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                    {apiAvailable
-                      ? 'Node aktif'
-                      : 'Menunggu koneksi backend'}
+
+                    Node aktif
+
                   </p>
 
                 </div>
 
               </motion.div>
 
+
+              {/* SUHU */}
+
               <motion.div
-                variants={fadeInUp}
+
+                variants={
+                  fadeInUp
+                }
+
                 className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4 sm:gap-5"
+
               >
 
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+
                   <LayoutDashboard
                     size={22}
                     strokeWidth={2.5}
                   />
+
                 </div>
+
 
                 <div className="min-w-0">
 
                   <p className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5">
+
                     Rata-rata Suhu
+
                   </p>
 
+
                   <h3 className="text-xl sm:text-2xl font-black text-gray-900">
+
                     {loading
                       ? '...'
                       : avgTemp === '-'
                       ? '- °C'
                       : `${avgTemp}°C`}
+
                   </h3>
 
+
                   <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                    Berdasarkan data sensor
+
+                    Berdasarkan data node yang tersedia
+
                   </p>
 
                 </div>
 
               </motion.div>
 
+
+              {/* CONNECTION */}
+
               <motion.div
-                variants={fadeInUp}
+
+                variants={
+                  fadeInUp
+                }
+
                 className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-4 sm:gap-5"
+
               >
 
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center flex-shrink-0">
+
                   <Bell
                     size={22}
                     strokeWidth={2.5}
                   />
+
                 </div>
+
 
                 <div className="min-w-0">
 
                   <p className="text-xs sm:text-sm font-medium text-gray-500 mb-0.5">
+
                     Status Koneksi
+
                   </p>
 
+
                   <h3 className="text-xl sm:text-2xl font-black text-gray-900">
-                    {connectionStatus.label}
+
+                    {
+                      connectionStatus.label
+                    }
+
                   </h3>
 
+
                   <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1">
-                    {apiAvailable
-                      ? 'Berdasarkan last seen node'
-                      : 'Backend belum tersedia'}
+
+                    Berdasarkan status node dari backend
+
                   </p>
 
                 </div>
@@ -526,120 +1364,243 @@ export default function Dashboard() {
 
             </div>
 
-            {/* Akses Cepat */}
+
+            {/* ==================================================
+                QUICK ACCESS
+            ================================================== */}
 
             <div>
 
+
               <motion.h2
-                variants={fadeInUp}
+
+                variants={
+                  fadeInUp
+                }
+
                 className="text-base sm:text-lg font-black text-gray-900 mb-4"
+
               >
+
                 Akses Cepat Sistem
+
               </motion.h2>
+
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
 
-                {nodeIds.map((nodeId) => {
 
-                  const config =
-                    NODE_CONFIG[nodeId];
+                {nodeIds.map(
+                  (
+                    nodeId
+                  ) => {
 
-                  const reading =
-                    nodeReadings[nodeId];
+                    const config =
+                      NODE_CONFIG[
+                        nodeId
+                      ];
 
-                  const lastSeen =
-                    getNodeLastSeen(
-                      biData,
-                      nodeId
-                    );
 
-                  const status =
-                    apiAvailable
-                      ? getNodeStatus(lastSeen)
-                      : {
-                          label: 'Tidak Tersedia',
-                          className:
-                            'bg-gray-50 text-gray-600',
-                          dotClassName:
-                            'bg-gray-400',
-                        };
+                    const reading =
+                      nodeReadings[
+                        nodeId
+                      ];
 
-                  const Icon = config.icon;
 
-                  return (
-                    <motion.div
-                      key={nodeId}
-                      variants={fadeInUp}
-                      whileHover={{ y: -5 }}
-                      className="bg-white rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm flex flex-col justify-between group"
-                    >
+                    const status =
+                      apiAvailable
+                        ? nodeStatuses[
+                            nodeId
+                          ]
+                        : {
 
-                      <div>
+                            label:
+                              'Tidak Tersedia',
 
-                        <div className="flex justify-between items-start mb-4">
+                            className:
+                              'bg-gray-50 text-gray-600',
 
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-green-50 text-green-700 flex items-center justify-center flex-shrink-0">
-                            <Icon size={20} />
-                          </div>
+                            dotClassName:
+                              'bg-gray-400',
 
-                          <span
-                            className={`${status.className} px-2.5 py-1 rounded-full font-bold text-[10px] flex items-center gap-1.5`}
-                          >
+                          };
+
+
+                    const lastSeen =
+                      getNodeLastSeen(
+                        biData,
+                        nodeId,
+                        reading
+                      );
+
+
+                    const Icon =
+                      config.icon;
+
+
+                    return (
+
+                      <motion.div
+
+                        key={
+                          nodeId
+                        }
+
+                        variants={
+                          fadeInUp
+                        }
+
+                        whileHover={{
+                          y: -5,
+                        }}
+
+                        className="bg-white rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm flex flex-col justify-between group"
+
+                      >
+
+
+                        <div>
+
+
+                          <div className="flex justify-between items-start mb-4">
+
+
+                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-green-50 text-green-700 flex items-center justify-center flex-shrink-0">
+
+                              <Icon
+                                size={20}
+                              />
+
+                            </div>
+
 
                             <span
-                              className={`w-1.5 h-1.5 ${status.dotClassName} rounded-full ${
-                                status.label ===
-                                'Online'
-                                  ? 'animate-pulse'
-                                  : ''
-                              }`}
-                            />
 
-                            {status.label}
+                              className={`${status.className} px-2.5 py-1 rounded-full font-bold text-[10px] flex items-center gap-1.5`}
 
-                          </span>
+                            >
+
+                              <span
+
+                                className={`w-1.5 h-1.5 ${status.dotClassName} rounded-full ${
+                                  status.label ===
+                                  'Online'
+                                    ? 'animate-pulse'
+                                    : ''
+                                }`}
+
+                              />
+
+
+                              {
+                                status.label
+                              }
+
+                            </span>
+
+                          </div>
+
+
+                          <h3 className="text-lg sm:text-xl font-black text-gray-900 mb-1">
+
+                            {
+                              config.title
+                            }
+
+                          </h3>
+
+
+                          <p className="text-xs sm:text-sm text-gray-500 font-medium mb-3">
+
+                            Node: {
+                              nodeId
+                            }
+
+                          </p>
+
+
+                          <div className="bg-[#fcfcfb] rounded-xl p-3 mb-3 border border-gray-50 text-xs text-gray-600 font-semibold text-center truncate">
+
+
+                            {reading ? (
+
+                              <>
+
+                                pH:{' '}
+                                {
+                                  fmt(
+                                    reading.ph,
+                                    loading
+                                  )
+                                }
+
+
+                                {' | '}
+
+
+                                Suhu:{' '}
+
+                                {
+                                  fmt(
+                                    reading.temperature_c,
+                                    loading
+                                  )
+                                }
+
+                                °C
+
+                              </>
+
+                            ) : (
+
+                              'Data belum tersedia'
+
+                            )}
+
+                          </div>
+
+
+                          <p className="text-[10px] sm:text-[11px] text-gray-400 text-center mb-5">
+
+                            Data terakhir:{' '}
+
+                            {
+                              formatLastSeen(
+                                lastSeen
+                              )
+                            }
+
+                          </p>
+
 
                         </div>
 
-                        <h3 className="text-lg sm:text-xl font-black text-gray-900 mb-1">
-                          {config.title}
-                        </h3>
 
-                        <p className="text-xs sm:text-sm text-gray-500 font-medium mb-3">
-                          Node: {nodeId}
-                        </p>
+                        <Link
 
-                        <div className="bg-[#fcfcfb] rounded-xl p-3 mb-5 border border-gray-50 text-xs text-gray-600 font-semibold text-center truncate">
+                          to={
+                            config.path
+                          }
 
-                          {apiAvailable ? (
-                            <>
-                              pH: {fmt(reading?.ph)}
-                              {' | '}
-                              Suhu:{' '}
-                              {fmt(
-                                reading?.temperature_c
-                              )}
-                              °C
-                            </>
-                          ) : (
-                            'Data belum tersedia'
-                          )}
+                          className="w-full py-3 bg-gray-50 text-green-700 rounded-2xl font-bold hover:bg-green-700 hover:text-white transition-colors flex justify-center items-center gap-2 text-xs sm:text-sm border border-gray-100 hover:border-green-700 group-hover:shadow-lg group-hover:shadow-green-700/20"
 
-                        </div>
+                        >
 
-                      </div>
+                          Buka Dashboard
 
-                      <Link
-                        to={config.path}
-                        className="w-full py-3 bg-gray-50 text-green-700 rounded-2xl font-bold hover:bg-green-700 hover:text-white transition-colors flex justify-center items-center gap-2 text-xs sm:text-sm border border-gray-100 hover:border-green-700 group-hover:shadow-lg group-hover:shadow-green-700/20"
-                      >
-                        Buka Dashboard
-                        <ArrowRight size={16} />
-                      </Link>
+                          <ArrowRight
+                            size={16}
+                          />
 
-                    </motion.div>
-                  );
-                })}
+                        </Link>
+
+
+                      </motion.div>
+
+                    );
+
+                  }
+                )}
 
               </div>
 
@@ -648,7 +1609,11 @@ export default function Dashboard() {
           </motion.div>
 
         </div>
+
       </main>
+
     </div>
+
   );
+
 }
