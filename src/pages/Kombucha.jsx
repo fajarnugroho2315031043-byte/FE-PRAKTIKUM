@@ -839,6 +839,138 @@ export default function Kombucha() {
     biData?.network_status ||
     {};
 
+  /*
+   * ================================================================
+   * RINGKASAN AVERAGE DARI BACKEND
+   * ================================================================
+   *
+   * Nilai diambil langsung dari:
+   * biData.sensor_summary
+   *
+   * Backend menghitung AVG berdasarkan filter:
+   * node_id + tanggal + periode.
+   *
+   * Jadi:
+   * - kartu sensor di atas = LATEST / realtime
+   * - kartu ringkasan di bawah = AVERAGE periode terpilih
+   *
+   * Gas dan MQ3 memang tidak berada di kpi, tetapi tersedia
+   * lengkap di sensor_summary dari backend.
+   * ================================================================
+   */
+
+  const sensorSummary =
+    biData?.sensor_summary || {};
+
+  /*
+   * ================================================================
+   * TREND ANALYSIS DARI BACKEND
+   * ================================================================
+   *
+   * Backend sudah menghasilkan:
+   * biData.trends.trends
+   *
+   * Setiap sensor memiliki:
+   * - direction
+   * - first_value
+   * - last_value
+   * - change
+   * - change_percent
+   * - data_points
+   * - first_timestamp
+   * - last_timestamp
+   *
+   * FE hanya menampilkan hasil analisis tersebut.
+   * Tidak menghitung ulang arah trend di frontend.
+   * ================================================================
+   */
+
+  const trendAnalysis =
+    biData?.trends?.trends ||
+    {};
+
+  const getTrendData = (...keys) => {
+    for (const key of keys) {
+      const value = trendAnalysis?.[key];
+
+      if (
+        value &&
+        typeof value === 'object'
+      ) {
+        return value;
+      }
+    }
+
+    return null;
+  };
+
+  const formatTrendDirection = (direction) => {
+    const value =
+      String(direction ?? '')
+        .trim()
+        .toLowerCase();
+
+    switch (value) {
+      case 'increasing':
+      case 'increase':
+        return {
+          label: 'Meningkat',
+          className: 'bg-green-50 text-green-700',
+          dotClassName: 'bg-green-500',
+          symbol: '↑',
+        };
+
+      case 'decreasing':
+      case 'decrease':
+        return {
+          label: 'Menurun',
+          className: 'bg-red-50 text-red-700',
+          dotClassName: 'bg-red-500',
+          symbol: '↓',
+        };
+
+      case 'stable':
+      case 'stabil':
+        return {
+          label: 'Stabil',
+          className: 'bg-gray-50 text-gray-600',
+          dotClassName: 'bg-gray-400',
+          symbol: '→',
+        };
+
+      default:
+        return {
+          label: 'Belum Ada Data',
+          className: 'bg-gray-50 text-gray-600',
+          dotClassName: 'bg-gray-400',
+          symbol: '—',
+        };
+    }
+  };
+
+  const formatTrendPercent = (value) => {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ''
+    ) {
+      return '—';
+    }
+
+    const numericValue =
+      Number(value);
+
+    if (
+      !Number.isFinite(
+        numericValue
+      )
+    ) {
+      return '—';
+    }
+
+    return `${numericValue >= 0 ? '+' : ''}${numericValue.toFixed(2)}%`;
+  };
+
   // ===================================================================
   // STATUS SENSOR
   // ===================================================================
@@ -1815,8 +1947,8 @@ export default function Kombucha() {
 
             {/* ======================================================= */}
             {/* GRAFIK + STATUS */}
-            {/* ======================================================= */}
 
+            {/* ======================================================= */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
               {/* ===================================================== */}
@@ -2126,6 +2258,381 @@ export default function Kombucha() {
               </motion.div>
 
             </div>
+
+
+            {/* RINGKASAN AVERAGE */}
+            {/* ======================================================= */}
+
+            <motion.div
+              variants={fadeInUp}
+              className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm"
+            >
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-gray-900">
+                    Ringkasan Rata-rata Sensor
+                  </h3>
+
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Rata-rata pembacaan {selectedNode} berdasarkan periode yang dipilih
+                  </p>
+                </div>
+
+                <span className="text-[10px] font-semibold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
+                  {selectedTimeRange}
+                </span>
+
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+
+                {[
+                  {
+                    label: 'Average Temperature',
+                    value:
+                      apiAvailable
+                        ? formatValue(
+                            sensorSummary.avg_temperature_c,
+                            2
+                          )
+                        : '-',
+                    unit: '°C',
+                    icon: Thermometer,
+                    color: 'text-orange-500',
+                  },
+
+                  {
+                    label: 'Average pH',
+                    value:
+                      apiAvailable
+                        ? formatValue(
+                            sensorSummary.avg_ph,
+                            2
+                          )
+                        : '-',
+                    unit: '',
+                    icon: Droplet,
+                    color: 'text-red-600',
+                  },
+
+                  {
+                    label: 'Average Pressure',
+                    value:
+                      apiAvailable
+                        ? formatValue(
+                            sensorSummary.avg_pressure_kpa,
+                            2
+                          )
+                        : '-',
+                    unit: 'kPa',
+                    icon: Gauge,
+                    color: 'text-purple-500',
+                  },
+
+                  {
+                    label: 'Average TDS',
+                    value:
+                      apiAvailable
+                        ? formatValue(
+                            sensorSummary.avg_tds_ppm,
+                            2
+                          )
+                        : '-',
+                    unit: 'ppm',
+                    icon: Activity,
+                    color: 'text-indigo-500',
+                  },
+
+                  {
+                    label: 'Average Gas ADC',
+                    value:
+                      apiAvailable
+                        ? formatValue(
+                            sensorSummary.avg_gas_adc,
+                            2
+                          )
+                        : '-',
+                    unit: 'ADC',
+                    icon: Wind,
+                    color: 'text-blue-500',
+                  },
+
+                  {
+                    label: 'Average MQ3 / Alkohol',
+                    value:
+                      apiAvailable
+                        ? formatValue(
+                            sensorSummary.avg_mq3_adc,
+                            2
+                          )
+                        : '-',
+                    unit: 'ADC',
+                    icon: Zap,
+                    color: 'text-amber-500',
+                  },
+                ].map(
+                  (item, index) => {
+
+                    const AverageIcon =
+                      item.icon;
+
+                    return (
+                      <div
+                        key={`${item.label}-${index}`}
+                        className="bg-gray-50/70 border border-gray-100 rounded-xl p-3"
+                      >
+
+                        <div className="flex items-center justify-between gap-2 mb-3">
+
+                          <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 leading-tight">
+                            {item.label}
+                          </span>
+
+                          <AverageIcon
+                            size={16}
+                            className={`${item.color} flex-shrink-0`} 
+                          />
+
+                        </div>
+
+                        <div className="flex items-baseline gap-1">
+
+                          <span className="text-sm sm:text-base font-black text-gray-900">
+                            {loading
+                              ? '...'
+                              : item.value}
+                          </span>
+
+                          {item.unit && (
+                            <span className="text-[9px] sm:text-[10px] font-bold text-gray-400">
+                              {item.unit}
+                            </span>
+                          )}
+
+                        </div>
+
+                        <p className="text-[8px] text-gray-400 mt-1.5">
+                          Rata-rata periode
+                        </p>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+
+            </motion.div>
+
+            {/* ======================================================= */}
+
+            {/* TREND ANALYSIS */}
+            {/* ======================================================= */}
+
+            <motion.div
+              variants={fadeInUp}
+              className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm"
+            >
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-gray-900">
+                    Trend Analysis
+                  </h3>
+
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Arah perubahan nilai sensor berdasarkan analisis backend
+                  </p>
+                </div>
+
+                <span className="text-[10px] font-semibold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
+                  {selectedTimeRange}
+                </span>
+
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+
+                {[
+                  {
+                    label: 'Suhu',
+                    key: 'temperature_c',
+                    unit: '°C',
+                    decimals: 2,
+                  },
+                  {
+                    label: 'pH',
+                    key: 'ph',
+                    unit: '',
+                    decimals: 2,
+                  },
+                  {
+                    label: 'Tekanan',
+                    key: 'pressure_kpa',
+                    unit: 'kPa',
+                    decimals: 2,
+                  },
+                  {
+                    label: 'TDS',
+                    key: 'tds_ppm',
+                    unit: 'ppm',
+                    decimals: 2,
+                  },
+                  {
+                    label: 'Gas ADC',
+                    key: 'gas_adc',
+                    unit: 'ADC',
+                    decimals: 2,
+                  },
+                  {
+                    label: 'MQ3 / Alkohol',
+                    key: 'mq3_adc',
+                    unit: 'ADC',
+                    decimals: 2,
+                  },
+                ].map(
+                  (item) => {
+
+                    const trend =
+                      getTrendData(
+                        item.key
+                      );
+
+                    const direction =
+                      formatTrendDirection(
+                        trend?.direction
+                      );
+
+                    const hasData =
+                      Boolean(
+                        trend &&
+                        (
+                          trend.first_value !==
+                            null &&
+                          trend.first_value !==
+                            undefined
+                        ) &&
+                        (
+                          trend.last_value !==
+                            null &&
+                          trend.last_value !==
+                            undefined
+                        )
+                      );
+
+                    return (
+                      <div
+                        key={item.key}
+                        className="border border-gray-100 rounded-xl p-3 bg-gray-50/60"
+                      >
+
+                        <div className="flex items-center justify-between gap-2 mb-3">
+
+                          <span className="text-[11px] font-black text-gray-700">
+                            {item.label}
+                          </span>
+
+                          <span
+                            className={`${direction.className} inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full`}
+                          >
+                            <span className="text-sm leading-none">
+                              {direction.symbol}
+                            </span>
+
+                            {direction.label}
+                          </span>
+
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+
+                          <div>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Awal
+                            </p>
+
+                            <p className="text-xs sm:text-sm font-black text-gray-900 mt-1">
+                              {hasData
+                                ? `${formatValue(
+                                    trend.first_value,
+                                    item.decimals
+                                  )}${item.unit ? ` ${item.unit}` : ''}`
+                                : '—'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Terakhir
+                            </p>
+
+                            <p className="text-xs sm:text-sm font-black text-gray-900 mt-1">
+                              {hasData
+                                ? `${formatValue(
+                                    trend.last_value,
+                                    item.decimals
+                                  )}${item.unit ? ` ${item.unit}` : ''}`
+                                : '—'}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-100">
+
+                          <div>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Perubahan
+                            </p>
+
+                            <p className="text-[11px] font-black text-gray-700 mt-1">
+                              {hasData
+                                ? `${Number(
+                                    trend.change
+                                  ) >= 0 ? '+' : ''}${formatValue(
+                                    trend.change,
+                                    item.decimals
+                                  )}${item.unit ? ` ${item.unit}` : ''}`
+                                : '—'}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Perubahan %
+                            </p>
+
+                            <p className="text-[11px] font-black text-gray-700 mt-1">
+                              {formatTrendPercent(
+                                trend?.change_percent
+                              )}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <p className="text-[8px] text-gray-400 mt-2">
+                          {trend?.data_points
+                            ? `${Number(
+                                trend.data_points
+                              ).toLocaleString('id-ID')} titik data`
+                            : 'Data belum tersedia'}
+                        </p>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+
+            </motion.div>
+
+            {/* ======================================================= */}
+
 
           </motion.div>
 

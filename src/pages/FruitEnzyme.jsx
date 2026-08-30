@@ -540,9 +540,191 @@ const getBackendNodeStatus = (
     .toLowerCase();
 };
 
+
+// =====================================================================
+// RINGKASAN AVERAGE & TREND — 100% DARI BI BACKEND
+//
+// Frontend TIDAK menghitung Average maupun Trend.
+// Sumber:
+//   Average -> biData.sensor_summary
+//   Trend  -> biData.trends.trends
+//
+// Jika BI belum mengirim nilai, FE menampilkan "-".
+// =====================================================================
+
+const SENSOR_FIELDS = [
+  {
+    key: 'temperature_c',
+    label: 'Average Temperature',
+    unit: '°C',
+    decimals: 2,
+  },
+  {
+    key: 'ph',
+    label: 'Average pH',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    key: 'pressure_kpa',
+    label: 'Average Pressure',
+    unit: 'kPa',
+    decimals: 2,
+  },
+  {
+    key: 'tds_ppm',
+    label: 'Average TDS',
+    unit: 'ppm',
+    decimals: 2,
+  },
+  {
+    key: 'gas_adc',
+    label: 'Average Gas ADC',
+    unit: 'ADC',
+    decimals: 2,
+  },
+  {
+    key: 'mq3_adc',
+    label: 'Average MQ3 / Alkohol',
+    unit: 'ADC',
+    decimals: 2,
+  },
+];
+
+const getBITrend = (trends, field) => {
+  if (!trends || typeof trends !== 'object') {
+    return null;
+  }
+
+  return trends[field] ?? null;
+};
+
+const normalizeBITrend = (trend) => {
+  if (!trend || typeof trend !== 'object') {
+    return {
+      direction: 'Belum Ada Data',
+      change: null,
+      firstValue: null,
+      lastValue: null,
+      dataPoints: null,
+    };
+  }
+
+  const rawDirection = String(
+    trend.direction ?? ''
+  )
+    .trim()
+    .toLowerCase();
+
+  let direction = 'Belum Ada Data';
+
+  if (
+    rawDirection === 'increasing' ||
+    rawDirection === 'increase' ||
+    rawDirection === 'naik' ||
+    rawDirection === 'up'
+  ) {
+    direction = 'Meningkat';
+  } else if (
+    rawDirection === 'decreasing' ||
+    rawDirection === 'decrease' ||
+    rawDirection === 'menurun' ||
+    rawDirection === 'turun' ||
+    rawDirection === 'down'
+  ) {
+    direction = 'Menurun';
+  } else if (
+    rawDirection === 'stable' ||
+    rawDirection === 'stabil'
+  ) {
+    direction = 'Stabil';
+  }
+
+  const changeValue = Number(
+    trend.change_percent
+  );
+
+  return {
+    direction,
+    change: Number.isFinite(changeValue)
+      ? changeValue
+      : null,
+    firstValue:
+      trend.first_value ?? null,
+    lastValue:
+      trend.last_value ?? null,
+    dataPoints:
+      trend.data_points ?? null,
+  };
+};
+
 // =====================================================================
 // KOMPONEN UTAMA
 // =====================================================================
+
+
+// =====================================================================
+// FORMAT TREND — HANYA MEMFORMAT HASIL DARI BI
+// =====================================================================
+
+const formatTrendDirection = (direction) => {
+  const value = String(direction ?? '').trim().toLowerCase();
+
+  switch (value) {
+    case 'increasing':
+    case 'increase':
+    case 'naik':
+    case 'meningkat':
+      return {
+        label: 'Meningkat',
+        className: 'bg-green-50 text-green-700',
+        dotClassName: 'bg-green-500',
+        symbol: '↑',
+      };
+
+    case 'decreasing':
+    case 'decrease':
+    case 'turun':
+    case 'menurun':
+      return {
+        label: 'Menurun',
+        className: 'bg-red-50 text-red-700',
+        dotClassName: 'bg-red-500',
+        symbol: '↓',
+      };
+
+    case 'stable':
+    case 'stabil':
+      return {
+        label: 'Stabil',
+        className: 'bg-gray-50 text-gray-600',
+        dotClassName: 'bg-gray-400',
+        symbol: '→',
+      };
+
+    default:
+      return {
+        label: 'Belum Ada Data',
+        className: 'bg-gray-50 text-gray-600',
+        dotClassName: 'bg-gray-400',
+        symbol: '—',
+      };
+  }
+};
+
+const formatTrendPercent = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return '—';
+  }
+
+  return `${numericValue >= 0 ? '+' : ''}${numericValue.toFixed(2)}%`;
+};
 
 export default function FruitEnzyme() {
   const location =
@@ -1288,6 +1470,46 @@ export default function FruitEnzyme() {
         }
       );
     }, [timeSeries]);
+
+  // ===================================================================
+  // AVERAGE & TREND — 100% DARI BI
+  // ===================================================================
+
+  const sensorSummary =
+    biData?.sensor_summary || {};
+
+  const backendTrends =
+    biData?.trends?.trends || {};
+
+  const averageKeyMap = {
+    temperature_c: 'avg_temperature_c',
+    ph: 'avg_ph',
+    pressure_kpa: 'avg_pressure_kpa',
+    tds_ppm: 'avg_tds_ppm',
+    gas_adc: 'avg_gas_adc',
+    mq3_adc: 'avg_mq3_adc',
+  };
+
+  const averageSummary =
+    SENSOR_FIELDS.map((sensor) => ({
+      ...sensor,
+      value:
+        sensorSummary?.[
+          averageKeyMap[sensor.key]
+        ] ?? null,
+    }));
+
+  const trendAnalysis =
+    SENSOR_FIELDS.map((sensor) => ({
+      ...sensor,
+      ...normalizeBITrend(
+        getBITrend(
+          backendTrends,
+          sensor.key
+        )
+      ),
+    }));
+
 
   // ===================================================================
   // RENDER
@@ -2127,6 +2349,258 @@ export default function FruitEnzyme() {
               </motion.div>
 
             </div>
+
+            {/* ======================================================= */}
+            {/* RINGKASAN AVERAGE */}
+            {/* ======================================================= */}
+
+            <motion.div
+              variants={fadeInUp}
+              className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm"
+            >
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-gray-900">
+                    Ringkasan Rata-rata Sensor
+                  </h3>
+
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Rata-rata pembacaan {selectedNode} berdasarkan periode yang dipilih
+                  </p>
+                </div>
+
+                <span className="text-[10px] font-semibold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
+                  {selectedTimeRange}
+                </span>
+
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+
+                {averageSummary.map(
+                  (item) => {
+
+                    const averageValue =
+                      item.value;
+
+                    return (
+                      <div
+                        key={item.key}
+                        className="bg-gray-50/70 border border-gray-100 rounded-xl p-3"
+                      >
+
+                        <div className="flex items-center justify-between gap-2 mb-3">
+
+                          <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 leading-tight">
+                            {item.label}
+                          </span>
+
+                          <Activity
+                            size={16}
+                            className="text-amber-500 flex-shrink-0"
+                          />
+
+                        </div>
+
+                        <div className="flex items-baseline gap-1">
+
+                          <span className="text-sm sm:text-base font-black text-gray-900">
+                            {loading
+                              ? '...'
+                              : averageValue === null ||
+                                averageValue === undefined
+                              ? '-'
+                              : formatValue(
+                                  averageValue,
+                                  item.decimals
+                                )}
+                          </span>
+
+                          {item.unit && (
+                            <span className="text-[9px] sm:text-[10px] font-bold text-gray-400">
+                              {item.unit}
+                            </span>
+                          )}
+
+                        </div>
+
+                        <p className="text-[8px] text-gray-400 mt-1.5">
+                          Rata-rata periode
+                        </p>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+
+            </motion.div>
+
+            {/* ======================================================= */}
+            {/* TREND ANALYSIS */}
+            {/* ======================================================= */}
+
+            <motion.div
+              variants={fadeInUp}
+              className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm"
+            >
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-gray-900">
+                    Trend Analysis
+                  </h3>
+
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Arah perubahan nilai sensor berdasarkan analisis backend
+                  </p>
+                </div>
+
+                <span className="text-[10px] font-semibold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
+                  {selectedTimeRange}
+                </span>
+
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+
+                {trendAnalysis.map(
+                  (item) => {
+
+                    const direction =
+                      formatTrendDirection(
+                        item.direction
+                      );
+
+                    const hasData =
+                      item.firstValue !== null &&
+                      item.firstValue !== undefined &&
+                      item.lastValue !== null &&
+                      item.lastValue !== undefined;
+
+                    return (
+                      <div
+                        key={item.key}
+                        className="border border-gray-100 rounded-xl p-3 bg-gray-50/60"
+                      >
+
+                        <div className="flex items-center justify-between gap-2 mb-3">
+
+                          <span className="text-[11px] font-black text-gray-700">
+                            {item.key === 'temperature_c'
+                              ? 'Suhu'
+                              : item.key === 'ph'
+                              ? 'pH'
+                              : item.key === 'pressure_kpa'
+                              ? 'Tekanan'
+                              : item.key === 'tds_ppm'
+                              ? 'TDS'
+                              : item.key === 'gas_adc'
+                              ? 'Gas ADC'
+                              : 'MQ3 / Alkohol'}
+                          </span>
+
+                          <span
+                            className={`${direction.className} inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full`}
+                          >
+                            <span className="text-sm leading-none">
+                              {direction.symbol}
+                            </span>
+
+                            {direction.label}
+                          </span>
+
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+
+                          <div>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Awal
+                            </p>
+
+                            <p className="text-xs sm:text-sm font-black text-gray-900 mt-1">
+                              {hasData
+                                ? `${formatValue(
+                                    item.firstValue,
+                                    item.decimals
+                                  )}${item.unit ? ` ${item.unit}` : ''}`
+                                : '—'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Terakhir
+                            </p>
+
+                            <p className="text-xs sm:text-sm font-black text-gray-900 mt-1">
+                              {hasData
+                                ? `${formatValue(
+                                    item.lastValue,
+                                    item.decimals
+                                  )}${item.unit ? ` ${item.unit}` : ''}`
+                                : '—'}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-100">
+
+                          <div>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Perubahan
+                            </p>
+
+                            <p className="text-[11px] font-black text-gray-700 mt-1">
+                              {item.change !== null
+                                ? `${item.change >= 0 ? '+' : ''}${formatValue(
+                                    item.change,
+                                    2
+                                  )}%`
+                                : '—'}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wide">
+                              Perubahan %
+                            </p>
+
+                            <p className="text-[11px] font-black text-gray-700 mt-1">
+                              {item.change !== null
+                                ? `${item.change >= 0 ? '+' : ''}${formatValue(
+                                    item.change,
+                                    2
+                                  )}%`
+                                : '—'}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <p className="text-[8px] text-gray-400 mt-2">
+                          {item.dataPoints
+                            ? `${Number(
+                                item.dataPoints
+                              ).toLocaleString('id-ID')} titik data`
+                            : 'Data belum tersedia'}
+                        </p>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+
+            </motion.div>
+
 
           </motion.div>
 

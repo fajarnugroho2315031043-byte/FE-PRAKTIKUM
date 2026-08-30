@@ -64,276 +64,113 @@ const getRowsFromBI = (result) => {
 };
 
 // =====================================================================
-// HITUNG METRIK JARINGAN
+// READER METRIK NETWORK DARI BI
 // =====================================================================
 
-const computeNetworkMetrics = (rows) => {
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return {
-      avgRssi: null,
-      avgLatency: null,
-      avgJitter: null,
-      lostPackets: 0,
-      packetLossPct: null,
-      packetRate: null,
-      interArrival: null,
-      deliveryRate: null,
-      duplicatePackets: 0,
-      outOfOrderPackets: 0,
-      totalRows: 0,
-    };
-  }
+const getBIMetric = (bi, ...paths) => {
+  for (const path of paths) {
+    const parts = path.split('.');
+    let value = bi;
 
-  // ---------------------------------------------------------------
-  // RSSI
-  // ---------------------------------------------------------------
-
-  const rssiValues = rows
-    .map((row) => Number(row.rssi_dbm))
-    .filter(Number.isFinite);
-
-  const avgRssi =
-    rssiValues.length > 0
-      ? rssiValues.reduce(
-          (sum, value) => sum + value,
-          0
-        ) / rssiValues.length
-      : null;
-
-  // ---------------------------------------------------------------
-  // LATENCY
-  // ---------------------------------------------------------------
-
-  const latencyRows = rows
-    .filter(
-      (row) =>
-        row.timestamp &&
-        row.received_at
-    )
-    .map((row) => ({
-      timestamp: new Date(
-        row.timestamp
-      ).getTime(),
-
-      receivedAt: new Date(
-        row.received_at
-      ).getTime(),
-    }))
-    .filter(
-      (row) =>
-        Number.isFinite(row.timestamp) &&
-        Number.isFinite(row.receivedAt) &&
-        row.receivedAt >= row.timestamp
-    );
-
-  const latencies = latencyRows.map(
-    (row) =>
-      row.receivedAt -
-      row.timestamp
-  );
-
-  const avgLatency =
-    latencies.length > 0
-      ? latencies.reduce(
-          (sum, value) => sum + value,
-          0
-        ) / latencies.length
-      : null;
-
-  // ---------------------------------------------------------------
-  // JITTER
-  // ---------------------------------------------------------------
-
-  const jitterValues = latencies
-    .slice(1)
-    .map((value, index) =>
-      Math.abs(
-        value -
-        latencies[index]
-      )
-    );
-
-  const avgJitter =
-    jitterValues.length > 0
-      ? jitterValues.reduce(
-          (sum, value) => sum + value,
-          0
-        ) / jitterValues.length
-      : null;
-
-  // ---------------------------------------------------------------
-  // SEQUENCE
-  // ---------------------------------------------------------------
-
-  const sequenceValues = rows
-    .map((row) => Number(row.sequence))
-    .filter(Number.isFinite);
-
-  // Sequence unik digunakan untuk menghitung packet loss.
-  // Duplicate tetap dihitung secara terpisah.
-  const uniqueSequences = [
-    ...new Set(sequenceValues),
-  ].sort(
-    (a, b) => a - b
-  );
-
-  let lostPackets = 0;
-
-  for (
-    let index = 1;
-    index < uniqueSequences.length;
-    index++
-  ) {
-    const gap =
-      uniqueSequences[index] -
-      uniqueSequences[index - 1] -
-      1;
-
-    if (gap > 0) {
-      lostPackets += gap;
-    }
-  }
-
-  const expectedPackets =
-    uniqueSequences.length +
-    lostPackets;
-
-  const packetLossPct =
-    expectedPackets > 0
-      ? (lostPackets /
-          expectedPackets) *
-        100
-      : null;
-
-  const deliveryRate =
-    expectedPackets > 0
-      ? (uniqueSequences.length /
-          expectedPackets) *
-        100
-      : null;
-
-  // ---------------------------------------------------------------
-  // DUPLICATE PACKET
-  // ---------------------------------------------------------------
-
-  let duplicatePackets = 0;
-
-  if (sequenceValues.length > 0) {
-    const sequenceSet =
-      new Set();
-
-    sequenceValues.forEach(
-      (sequence) => {
-        if (
-          sequenceSet.has(
-            sequence
-          )
-        ) {
-          duplicatePackets++;
-        } else {
-          sequenceSet.add(
-            sequence
-          );
-        }
+    for (const part of parts) {
+      if (value == null) {
+        value = undefined;
+        break;
       }
-    );
-  }
+      value = value[part];
+    }
 
-  // ---------------------------------------------------------------
-  // OUT OF ORDER PACKET
-  // ---------------------------------------------------------------
-
-  let outOfOrderPackets = 0;
-
-  for (
-    let index = 1;
-    index < sequenceValues.length;
-    index++
-  ) {
-    if (
-      sequenceValues[index] <
-      sequenceValues[index - 1]
-    ) {
-      outOfOrderPackets++;
+    if (value != null && value !== '') {
+      return value;
     }
   }
 
-  // ---------------------------------------------------------------
-  // INTER-ARRIVAL TIME
-  // ---------------------------------------------------------------
+  return null;
+};
 
-  const timestamps = rows
-    .map((row) =>
-      new Date(
-        row.received_at ||
-          row.timestamp
-      ).getTime()
-    )
-    .filter(Number.isFinite)
-    .sort(
-      (a, b) => a - b
-    );
-
-  const interArrivalValues =
-    timestamps
-      .slice(1)
-      .map(
-        (timestamp, index) =>
-          timestamp -
-          timestamps[index]
-      )
-      .filter(
-        (value) => value >= 0
-      );
-
-  const interArrival =
-    interArrivalValues.length >
-    0
-      ? interArrivalValues.reduce(
-          (sum, value) =>
-            sum + value,
-          0
-        ) /
-        interArrivalValues.length
-      : null;
-
-  // ---------------------------------------------------------------
-  // PACKET RATE
-  // ---------------------------------------------------------------
-
-  let packetRate = null;
-
-  if (timestamps.length >= 2) {
-    const first =
-      timestamps[0];
-
-    const last =
-      timestamps[
-        timestamps.length - 1
-      ];
-
-    const durationSeconds =
-      (last - first) / 1000;
-
-    if (durationSeconds > 0) {
-      packetRate =
-        timestamps.length /
-        durationSeconds;
-    }
-  }
+const getBINetworkMetrics = (bi) => {
+  // Struktur BI yang benar:
+  // result.network.signal.average_dbm
+  // result.network.delay.average_ms
+  // result.network.jitter.jitter_ms
+  // result.network.packet_loss.packet_loss_percent
+  // result.network.packet_loss.lost_packets
+  const source = bi?.network || {};
 
   return {
-    avgRssi,
-    avgLatency,
-    avgJitter,
-    lostPackets,
-    packetLossPct,
-    packetRate,
-    interArrival,
-    deliveryRate,
-    duplicatePackets,
-    outOfOrderPackets,
-    totalRows: rows.length,
+    avgRssi: getBIMetric(
+      source,
+      'signal.average_dbm',
+      'signal.avg_dbm',
+      'signal.latest_dbm'
+    ),
+    avgLatency: getBIMetric(
+      source,
+      'delay.average_ms',
+      'delay.avg_ms',
+      'delay.average'
+    ),
+    avgJitter: getBIMetric(
+      source,
+      'jitter.jitter_ms',
+      'jitter.average_ms',
+      'jitter.avg_ms'
+    ),
+    lostPackets: getBIMetric(
+      source,
+      'packet_loss.lost_packets'
+    ),
+    packetLossPct: getBIMetric(
+      source,
+      'packet_loss.packet_loss_percent',
+      'packet_loss.percentage'
+    ),
+    packetRate: getBIMetric(
+      source,
+      'packet_rate',
+      'packet_rate_pps',
+      'throughput.packet_rate'
+    ),
+    interArrival: getBIMetric(
+      source,
+      'inter_arrival_ms',
+      'inter_arrival_time',
+      'inter_arrival.average_ms'
+    ),
+    deliveryRate: getBIMetric(
+      source,
+      'delivery_rate',
+      'delivery_rate_pct',
+      'delivery_rate_percent',
+      'reception_rate',
+      'reception_rate_pct'
+    ),
+    duplicatePackets: getBIMetric(
+      source,
+      'duplicate_packets',
+      'duplicates',
+      'duplicate.count'
+    ),
+    outOfOrderPackets: getBIMetric(
+      source,
+      'out_of_order_packets',
+      'out_of_order',
+      'out_of_order.count'
+    ),
+    sequenceGap: getBIMetric(
+      source,
+      'sequence_gap',
+      'sequence_gap.total',
+      'sequence_gap.count',
+      'sequence_gap.gaps'
+    ),
+    dataQuality: getBIMetric(
+      source,
+      'data_quality',
+      'data_quality.status',
+      'quality',
+      'quality.status'
+    ),
   };
 };
 
@@ -361,72 +198,127 @@ const formatNumber = (
 };
 
 // =====================================================================
-// STATUS NODE
+// STATUS NODE DARI BI BACKEND
 // =====================================================================
 
-const getNodeStatus = (data) => {
-  if (!data?.timestamp) {
-    return {
-      label: 'Tidak Tersedia',
-      className:
-        'bg-gray-100 text-gray-500',
-      dotClassName:
-        'bg-gray-400',
-    };
+const getBINodeStatus = (result, nodeId) => {
+  const source = result?.node_status;
+
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    const direct = source[nodeId];
+
+    if (direct != null) {
+      if (typeof direct === 'object') {
+        return direct.status ?? direct.state ?? direct.node_status ?? null;
+      }
+      return direct;
+    }
+
+    if (
+      source.status != null ||
+      source.state != null ||
+      source.node_status != null
+    ) {
+      return source.status ?? source.state ?? source.node_status;
+    }
   }
 
-  const timestamp =
-    new Date(
-      data.timestamp
-    ).getTime();
+  return (
+    result?.node_status ??
+    result?.status ??
+    null
+  );
+};
+
+const formatBINodeStatus = (status) => {
+  const value = String(status ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+  switch (value) {
+    case 'online':
+    case 'connected':
+    case 'active':
+      return {
+        label: 'Online',
+        className: 'bg-green-50 text-green-600',
+        dotClassName: 'bg-green-500',
+      };
+
+    case 'warning':
+      return {
+        label: 'Warning',
+        className: 'bg-yellow-50 text-yellow-600',
+        dotClassName: 'bg-yellow-500',
+      };
+
+    case 'offline':
+    case 'disconnected':
+      return {
+        label: 'Offline',
+        className: 'bg-red-50 text-red-600',
+        dotClassName: 'bg-red-500',
+      };
+
+    case 'no_data':
+    case 'nodata':
+    case 'no_data_available':
+    case 'tidak_ada_data':
+      return {
+        label: 'Tidak Ada Data',
+        className: 'bg-gray-100 text-gray-500',
+        dotClassName: 'bg-gray-400',
+      };
+
+    default:
+      return {
+        label: 'Tidak Ada Data',
+        className: 'bg-gray-100 text-gray-500',
+        dotClassName: 'bg-gray-400',
+      };
+  }
+};
+
+const getBINodeNetwork = (result) =>
+  result?.network_metrics ??
+  result?.network_analysis ??
+  result?.network ??
+  result?.metrics ??
+  {};
+
+const getBIPacketLoss = (result) => {
+  return result?.network?.packet_loss?.packet_loss_percent ?? null;
+};
+
+const getBILostPackets = (result) => {
+  return result?.network?.packet_loss?.lost_packets ?? null;
+};
+
+const getBISequenceGap = (result, nodeId) => {
+  const group = result?.network?.packet_loss?.groups?.find(
+    (item) => item?.node_id === nodeId
+  );
+
+  if (!group) return null;
+
+  const expected = Number(group.expected_packets);
+  const received = Number(group.received_packets);
 
   if (
-    !Number.isFinite(timestamp)
+    Number.isFinite(expected) &&
+    Number.isFinite(received) &&
+    expected >= received
   ) {
-    return {
-      label: 'Tidak Tersedia',
-      className:
-        'bg-gray-100 text-gray-500',
-      dotClassName:
-        'bg-gray-400',
-    };
+    return expected - received;
   }
 
-  const age =
-    (Date.now() - timestamp) /
-    1000;
-
-  if (age <= 60) {
-    return {
-      label: 'Online',
-      className:
-        'bg-green-50 text-green-600',
-      dotClassName:
-        'bg-green-500',
-    };
-  }
-
-  if (age <= 180) {
-    return {
-      label: 'Warning',
-      className:
-        'bg-yellow-50 text-yellow-600',
-      dotClassName:
-        'bg-yellow-500',
-    };
-  }
-
-  return {
-    label: 'Offline',
-    className:
-      'bg-red-50 text-red-600',
-    dotClassName:
-      'bg-red-500',
-  };
+  return null;
 };
 
 // =====================================================================
 // KOMPONEN
+// =====================================================================
 // =====================================================================
 
 export default function NetworkPerf() {
@@ -462,8 +354,13 @@ export default function NetworkPerf() {
   ] = useState(null);
 
   const [
-    nodeLatest,
-    setNodeLatest,
+    biData,
+    setBiData,
+  ] = useState(null);
+
+  const [
+    nodeBI,
+    setNodeBI,
   ] = useState({
     KOMBUCHA_01: null,
     ECO_02: null,
@@ -512,7 +409,9 @@ export default function NetworkPerf() {
       async () => {
         try {
           const filters = {
-            limit: 100,
+            // Limit tinggi agar BI mengembalikan seluruh record node
+            // yang saat ini jumlahnya masih di bawah 5000 per node.
+            limit: 5000,
           };
 
           if (selectedNode) {
@@ -556,6 +455,8 @@ export default function NetworkPerf() {
             ] || null
           );
 
+          setBiData(result);
+
           setApiAvailable(
             true
           );
@@ -570,6 +471,7 @@ export default function NetworkPerf() {
           if (isMounted) {
             setRows([]);
             setLatest(null);
+            setBiData(null);
 
             setApiAvailable(
               false
@@ -611,128 +513,223 @@ export default function NetworkPerf() {
   ]);
 
   // ===================================================================
-  // LOAD STATUS SETIAP NODE
+  // LOAD BI PER NODE
+  // ===================================================================
+  //
+  // Semua informasi tabel node diambil dari response BI:
+  // - latest reading
+  // - RSSI terakhir
+  // - packet loss
+  // - paket hilang
+  // - sequence gap
+  // - status node
+  //
+  // FE tidak menghitung packet loss maupun status node.
   // ===================================================================
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadNodeStatus =
-      async () => {
-        try {
-          const [
-            kombucha,
-            eco,
-            fruit,
-          ] = await Promise.all([
-            fetchBI({
-              node_id:
-                'KOMBUCHA_01',
-              limit: 1,
-            }).catch(
-              () => null
-            ),
+    const NODE_IDS = [
+      'KOMBUCHA_01',
+      'ECO_02',
+      'FRUIT_03',
+    ];
 
+    const loadNodeBI = async () => {
+      try {
+        const results = await Promise.all(
+          NODE_IDS.map((nodeId) =>
             fetchBI({
-              node_id:
-                'ECO_02',
-              limit: 1,
-            }).catch(
-              () => null
-            ),
+              node_id: nodeId,
+              limit: 5000,
+            }).catch((err) => {
+              console.error(
+                `[NETWORK PERF] Gagal mengambil BI ${nodeId}:`,
+                err
+              );
+              return null;
+            })
+          )
+        );
 
-            fetchBI({
-              node_id:
-                'FRUIT_03',
-              limit: 1,
-            }).catch(
-              () => null
-            ),
-          ]);
+        if (!isMounted) return;
 
-          if (!isMounted) {
+        const next = {};
+
+        NODE_IDS.forEach((nodeId, index) => {
+          const result = results[index];
+
+          if (!result) {
+            next[nodeId] = null;
             return;
           }
 
-          const getLatest =
-            (result) => {
-              const data =
-                getRowsFromBI(
-                  result
-                );
+          const data = getRowsFromBI(result);
 
-              if (
-                data.length === 0
-              ) {
-                return null;
-              }
-
-              return [
-                ...data,
-              ].sort(
-                (a, b) =>
-                  new Date(
-                    b.timestamp ||
-                      b.received_at
-                  ) -
-                  new Date(
-                    a.timestamp ||
-                      a.received_at
-                  )
-              )[0];
-            };
-
-          setNodeLatest({
-            KOMBUCHA_01:
-              getLatest(
-                kombucha
-              ),
-
-            ECO_02:
-              getLatest(
-                eco
-              ),
-
-            FRUIT_03:
-              getLatest(
-                fruit
-              ),
-          });
-        } catch (err) {
-          console.error(
-            '[NETWORK PERF] Gagal mengambil status node:',
-            err
+          const sorted = [...data].sort(
+            (a, b) =>
+              new Date(
+                b?.timestamp || b?.received_at
+              ) -
+              new Date(
+                a?.timestamp || a?.received_at
+              )
           );
-        }
-      };
 
-    loadNodeStatus();
+          const latestRow = sorted[0] || null;
 
-    const intervalId =
-      setInterval(
-        loadNodeStatus,
-        POLLING_INTERVAL
-      );
+          next[nodeId] = {
+            result,
+            latest: latestRow,
+            totalRecords:
+              result?.network?.nodes?.[nodeId]?.total_readings ??
+              result?.network?.nodes?.[nodeId]?.total_rows ??
+              result?.node_status?.[nodeId]?.reading_count ??
+              result?.raw_data?.count ??
+              result?.count ??
+              data.length,
+            status: getBINodeStatus(result, nodeId),
+            packetLoss: getBIPacketLoss(result),
+            lostPackets: getBILostPackets(result),
+            sequenceGap: getBISequenceGap(result, nodeId),
+          };
+        });
 
-    return () =>
-      clearInterval(
-        intervalId
-      );
-  }, [
-    POLLING_INTERVAL,
-  ]);
+        setNodeBI(next);
+      } catch (err) {
+        console.error(
+          '[NETWORK PERF] Gagal mengambil BI per node:',
+          err
+        );
+      }
+    };
+
+    loadNodeBI();
+
+    const intervalId = setInterval(
+      loadNodeBI,
+      POLLING_INTERVAL
+    );
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [POLLING_INTERVAL]);
+
+  // Daftar node didefinisikan sebelum semua kalkulasi/render yang
+  // menggunakannya. Sebelumnya deklarasi ini berada terlalu bawah,
+  // sehingga render pertama terkena ReferenceError dan layar menjadi putih.
+  const NODE_IDS = [
+    'KOMBUCHA_01',
+    'ECO_02',
+    'FRUIT_03',
+  ];
 
   // ===================================================================
-  // METRIK
+  // METRIK DARI BI
+  // ===================================================================
+  //
+  // Jika satu node dipilih, gunakan network_metrics milik node tersebut.
+  // Jika "Semua Node" dipilih, response BI gabungan kadang hanya
+  // mengembalikan raw_data tanpa network_metrics gabungan. Karena itu
+  // FE mengambil network_metrics dari BI masing-masing node dan
+  // menggabungkannya hanya untuk kebutuhan kartu ringkasan.
+  //
+  // Tidak ada perhitungan network metric dari timestamp/raw data di FE.
+  // Semua nilai sumber tetap berasal dari BI backend.
   // ===================================================================
 
-  const metrics = useMemo(
-    () =>
-      computeNetworkMetrics(
-        rows
-      ),
-    [rows]
-  );
+  const selectedBIResult =
+    selectedNode
+      ? nodeBI[selectedNode]?.result || biData
+      : null;
+
+  const perNodeBIResults = NODE_IDS
+    .map((nodeId) => nodeBI[nodeId]?.result)
+    .filter(Boolean);
+
+  const getNumericMetric = (metric) => {
+    const value = Number(metric);
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const aggregateBIMetrics = (results) => {
+    if (!results.length) {
+      return getBINetworkMetrics(biData);
+    }
+
+    const parsed = results.map(getBINetworkMetrics);
+
+    const average = (key) => {
+      const values = parsed
+        .map((item) => getNumericMetric(item[key]))
+        .filter((value) => value !== null);
+
+      if (!values.length) return null;
+
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    };
+
+    const sum = (key) => {
+      const values = parsed
+        .map((item) => getNumericMetric(item[key]))
+        .filter((value) => value !== null);
+
+      if (!values.length) return null;
+
+      return values.reduce((total, value) => total + value, 0);
+    };
+
+    const firstNonNull = (key) => {
+      const value = parsed
+        .map((item) => item[key])
+        .find((item) => item !== null && item !== undefined && item !== '');
+
+      return value ?? null;
+    };
+
+    return {
+      avgRssi: average('avgRssi'),
+      avgLatency: average('avgLatency'),
+      avgJitter: average('avgJitter'),
+
+      // Paket hilang adalah jumlah sehingga dijumlahkan.
+      lostPackets: sum('lostPackets'),
+
+      // Packet loss persentase adalah ringkasan antar node.
+      packetLossPct: average('packetLossPct'),
+
+      packetRate: average('packetRate'),
+      interArrival: average('interArrival'),
+      deliveryRate: average('deliveryRate'),
+
+      duplicatePackets: sum('duplicatePackets'),
+      outOfOrderPackets: sum('outOfOrderPackets'),
+      sequenceGap: sum('sequenceGap'),
+
+      dataQuality: firstNonNull('dataQuality'),
+    };
+  };
+
+  const metrics = selectedNode
+    ? getBINetworkMetrics(selectedBIResult)
+    : aggregateBIMetrics(perNodeBIResults);
+
+  // Untuk mode Semua Node, timestamp terakhir juga diambil dari
+  // record terakhir seluruh node agar Data Freshness tidak kosong.
+  const networkLatest =
+    selectedNode
+      ? nodeBI[selectedNode]?.latest || latest
+      : NODE_IDS
+          .map((nodeId) => nodeBI[nodeId]?.latest)
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              new Date(b?.timestamp || b?.received_at) -
+              new Date(a?.timestamp || a?.received_at)
+          )[0] || latest;
 
   // ===================================================================
   // SPESIFIKASI METRIK
@@ -830,6 +827,46 @@ export default function NetworkPerf() {
   ];
 
   // ===================================================================
+  // TOTAL RECORD AKTUAL DARI BI PER NODE
+  // ===================================================================
+  //
+  // Jangan gunakan `rows.length` sebagai Total Record karena `rows`
+  // mengikuti limit request BI. Contoh: request limit 5000 akan
+  // menghasilkan 5000 meskipun database sebenarnya hanya memiliki
+  // 2572 record.
+  //
+  // Data per node diambil terpisah dengan limit 5000, sehingga
+  // totalRecords di bawah merepresentasikan jumlah record aktual
+  // yang tersedia untuk masing-masing node pada response BI.
+  // ===================================================================
+
+  const actualTotalRecords = useMemo(() => {
+    if (!apiAvailable) {
+      return null;
+    }
+
+    if (selectedNode) {
+      return (
+        nodeBI[selectedNode]?.result?.network?.nodes?.[selectedNode]?.total_readings ??
+        nodeBI[selectedNode]?.result?.network?.nodes?.[selectedNode]?.total_rows ??
+        nodeBI[selectedNode]?.result?.node_status?.[selectedNode]?.reading_count ??
+        nodeBI[selectedNode]?.totalRecords ??
+        0
+      );
+    }
+
+    return NODE_IDS.reduce(
+      (total, nodeId) =>
+        total + (nodeBI[nodeId]?.totalRecords ?? 0),
+      0
+    );
+  }, [
+    apiAvailable,
+    selectedNode,
+    nodeBI,
+  ]);
+
+  // ===================================================================
   // KARTU METRIK
   // ===================================================================
 
@@ -840,9 +877,9 @@ export default function NetworkPerf() {
         loading
           ? '...'
           : apiAvailable
-          ? `${formatNumber(
-              metrics.avgRssi
-            )} dBm`
+          ? metrics.avgRssi !== null
+            ? `${formatNumber(metrics.avgRssi)} dBm`
+            : '- dBm'
           : '-',
       status:
         apiAvailable &&
@@ -860,9 +897,9 @@ export default function NetworkPerf() {
         loading
           ? '...'
           : apiAvailable
-          ? `${formatNumber(
-              metrics.avgLatency
-            )} ms`
+          ? metrics.avgLatency !== null
+            ? `${formatNumber(metrics.avgLatency)} ms`
+            : '- ms'
           : '-',
       status:
         apiAvailable &&
@@ -888,8 +925,12 @@ export default function NetworkPerf() {
             )}%`
           : '-',
       status:
-        apiAvailable
-          ? `${metrics.lostPackets} hilang`
+        apiAvailable &&
+        metrics.lostPackets !== null
+          ? `${formatNumber(
+              metrics.lostPackets,
+              0
+            )} hilang`
           : 'Tidak tersedia',
       icon: ShieldAlert,
       color:
@@ -902,9 +943,9 @@ export default function NetworkPerf() {
         loading
           ? '...'
           : apiAvailable
-          ? `${formatNumber(
-              metrics.avgJitter
-            )} ms`
+          ? metrics.avgJitter !== null
+            ? `${formatNumber(metrics.avgJitter)} ms`
+            : '- ms'
           : '-',
       status:
         apiAvailable &&
@@ -921,12 +962,14 @@ export default function NetworkPerf() {
       value:
         loading
           ? '...'
-          : apiAvailable
-          ? `${rows.length} pkt`
+          : apiAvailable &&
+            actualTotalRecords !== null
+          ? `${actualTotalRecords.toLocaleString('id-ID')} pkt`
           : '-',
       status:
-        apiAvailable
-          ? 'Terekam'
+        apiAvailable &&
+        actualTotalRecords !== null
+          ? 'Total BI'
           : 'Tidak tersedia',
       icon: ArrowDownUp,
       color:
@@ -939,16 +982,16 @@ export default function NetworkPerf() {
         loading
           ? '...'
           : apiAvailable &&
-            latest?.timestamp
+            networkLatest?.timestamp
           ? new Date(
-              latest.timestamp
+              networkLatest.timestamp
             ).toLocaleTimeString(
               'id-ID'
             )
           : '-',
       status:
         apiAvailable &&
-        latest?.timestamp
+        networkLatest?.timestamp
           ? 'Data terakhir'
           : 'Tidak tersedia',
       icon: Database,
@@ -1054,9 +1097,9 @@ export default function NetworkPerf() {
               />
 
               <span>
-                {latest?.timestamp
+                {networkLatest?.timestamp
                   ? new Date(
-                      latest.timestamp
+                      networkLatest.timestamp
                     ).toLocaleString(
                       'id-ID'
                     )
@@ -1217,7 +1260,7 @@ export default function NetworkPerf() {
                         metrics.packetRate,
                         2
                       )} pkt/s`
-                    : '-'}
+                    : 'Tidak tersedia dari BI'}
                 </p>
 
               </div>
@@ -1235,7 +1278,7 @@ export default function NetworkPerf() {
                     ? `${formatNumber(
                         metrics.interArrival
                       )} ms`
-                    : '-'}
+                    : 'Tidak tersedia dari BI'}
                 </p>
 
               </div>
@@ -1254,7 +1297,7 @@ export default function NetworkPerf() {
                         metrics.deliveryRate,
                         2
                       )}%`
-                    : '-'}
+                    : 'Tidak tersedia dari BI'}
                 </p>
 
               </div>
@@ -1267,7 +1310,7 @@ export default function NetworkPerf() {
 
                 <p className="text-lg font-black text-gray-900 mt-1">
                   {apiAvailable
-                    ? `${metrics.duplicatePackets} / ${metrics.outOfOrderPackets}`
+                    ? `${metrics.duplicatePackets ?? '-'} / ${metrics.outOfOrderPackets ?? '-'}`
                     : '-'}
                 </p>
 
@@ -1275,165 +1318,158 @@ export default function NetworkPerf() {
 
             </motion.div>
 
-            {/* STATUS NODE */}
-
+            {/* STATUS NODE & PACKET LOSS */}
             <motion.div
               variants={fadeInUp}
               className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm"
             >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-black text-gray-900">
+                    Status Perangkat & Node Terhubung
+                  </h3>
 
-              <h3 className="text-base font-black text-gray-900 mb-4">
-                Status Perangkat & Node Terhubung
-              </h3>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Status, RSSI, packet loss, paket hilang, dan sequence gap ditampilkan dari BI per node.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
+                    BI Backend
+                  </span>
+
+                  <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
+                    Total: {actualTotalRecords !== null
+                      ? actualTotalRecords.toLocaleString('id-ID')
+                      : '-'}
+                  </span>
+                </div>
+              </div>
 
               <div className="overflow-x-auto">
-
                 <table className="w-full text-left text-xs text-gray-600">
-
                   <thead className="bg-gray-50 text-gray-400 font-bold uppercase text-[10px] tracking-wider">
-
                     <tr>
-
-                      <th className="p-3 rounded-l-xl">
-                        Node ID
-                      </th>
-
-                      <th className="p-3">
-                        Batch ID
-                      </th>
-
-                      <th className="p-3">
-                        RSSI Terakhir
-                      </th>
-
-                      <th className="p-3">
-                        Data Terakhir Masuk
-                      </th>
-
-                      <th className="p-3 rounded-r-xl">
-                        Status
-                      </th>
-
+                      <th className="p-3 rounded-l-xl">Node ID</th>
+                      <th className="p-3">Batch ID</th>
+                      <th className="p-3">RSSI Terakhir</th>
+                      <th className="p-3">Packet Loss</th>
+                      <th className="p-3">Paket Hilang</th>
+                      <th className="p-3">Sequence Gap</th>
+                      <th className="p-3">Data Terakhir Masuk</th>
+                      <th className="p-3 rounded-r-xl">Status</th>
                     </tr>
-
                   </thead>
 
                   <tbody className="divide-y divide-gray-50 font-medium">
-
                     {[
-                      {
-                        nodeId:
-                          'KOMBUCHA_01',
-                        data:
-                          nodeLatest.KOMBUCHA_01,
-                      },
+                      'KOMBUCHA_01',
+                      'ECO_02',
+                      'FRUIT_03',
+                    ].map((nodeId) => {
+                      const node = nodeBI[nodeId];
+                      const latestRow = node?.latest;
+                      const status = formatBINodeStatus(node?.status);
 
-                      {
-                        nodeId:
-                          'ECO_02',
-                        data:
-                          nodeLatest.ECO_02,
-                      },
-
-                      {
-                        nodeId:
-                          'FRUIT_03',
-                        data:
-                          nodeLatest.FRUIT_03,
-                      },
-                    ].map(
-                      (
-                        row,
-                        index
-                      ) => {
-
-                        const status =
-                          getNodeStatus(
-                            row.data
-                          );
-
-                        return (
-                          <tr
-                            key={
-                              index
-                            }
-                            className="hover:bg-gray-50/50 transition-colors"
-                          >
-
-                            <td className="p-3 font-bold text-gray-800">
-                              {
-                                row.nodeId
-                              }
-                            </td>
-
-                            <td className="p-3 text-gray-500 font-mono">
-                              {
-                                row.data
-                                  ?.batch_id ??
-                                '-'
-                              }
-                            </td>
-
-                            <td className="p-3">
-                              {row.data
-                                ?.rssi_dbm !=
-                              null
-                                ? `${formatNumber(
-                                    row
-                                      .data
-                                      .rssi_dbm,
-                                    0
-                                  )} dBm`
-                                : '-'}
-                            </td>
-
-                            <td className="p-3">
-                              {row.data
-                                ?.timestamp
-                                ? new Date(
-                                    row
-                                      .data
-                                      .timestamp
-                                  ).toLocaleString(
-                                    'id-ID'
-                                  )
-                                : '-'}
-                            </td>
-
-                            <td className="p-3">
-
-                              <span
-                                className={`${status.className} font-bold px-2 py-0.5 rounded-full text-[10px] inline-flex items-center gap-1`}
-                              >
-
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${status.dotClassName} ${
-                                    status.label ===
-                                    'Online'
-                                      ? 'animate-pulse'
-                                      : ''
-                                  }`}
-                                />
-
-                                {
-                                  status.label
-                                }
-
-                              </span>
-
-                            </td>
-
-                          </tr>
+                      const packetGroup =
+                        node?.result?.network?.packet_loss?.groups?.find(
+                          (item) => item?.node_id === nodeId
                         );
-                      }
-                    )}
 
+                      const nodePacketLoss =
+                        packetGroup?.packet_loss_percent ??
+                        node?.packetLoss ??
+                        null;
+
+                      const nodeLostPackets =
+                        packetGroup?.lost_packets ??
+                        node?.lostPackets ??
+                        null;
+
+                      const nodeSequenceGap =
+                        packetGroup
+                          ? (
+                              Number(packetGroup.expected_packets) -
+                              Number(packetGroup.received_packets)
+                            )
+                          : node?.sequenceGap ?? null;
+
+                      return (
+                        <tr
+                          key={nodeId}
+                          className="hover:bg-gray-50/50 transition-colors"
+                        >
+                          <td className="p-3 font-bold text-gray-800">
+                            {nodeId}
+                          </td>
+
+                          <td className="p-3 text-gray-500 font-mono">
+                            {latestRow?.batch_id ?? '-'}
+                          </td>
+
+                          <td className="p-3">
+                            {latestRow?.rssi_dbm != null
+                              ? `${formatNumber(
+                                  latestRow.rssi_dbm,
+                                  0
+                                )} dBm`
+                              : '-'}
+                          </td>
+
+                          <td className="p-3 font-bold">
+                            {nodePacketLoss != null
+                              ? `${formatNumber(
+                                  nodePacketLoss,
+                                  2
+                                )}%`
+                              : '-'}
+                          </td>
+
+                          <td className="p-3">
+                            {nodeLostPackets != null
+                              ? `${formatNumber(
+                                  nodeLostPackets,
+                                  0
+                                )} pkt`
+                              : '-'}
+                          </td>
+
+                          <td className="p-3">
+                            {nodeSequenceGap != null &&
+                              Number.isFinite(Number(nodeSequenceGap))
+                              ? String(Number(nodeSequenceGap))
+                              : '-'}
+                          </td>
+
+                          <td className="p-3">
+                            {latestRow?.timestamp
+                              ? new Date(
+                                  latestRow.timestamp
+                                ).toLocaleString('id-ID')
+                              : '-'}
+                          </td>
+
+                          <td className="p-3">
+                            <span
+                              className={`${status.className} font-bold px-2 py-0.5 rounded-full text-[10px] inline-flex items-center gap-1`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${status.dotClassName} ${
+                                  status.label === 'Online'
+                                    ? 'animate-pulse'
+                                    : ''
+                                }`}
+                              />
+                              {status.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
-
                 </table>
-
               </div>
-
             </motion.div>
 
             {/* SPESIFIKASI METRIK */}
