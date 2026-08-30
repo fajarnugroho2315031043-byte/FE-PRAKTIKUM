@@ -106,36 +106,124 @@ const INDICATOR_MAP = {
 };
 
 // =====================================================================
-// HELPER
+// JUMLAH DATA
+// Sensor mengirim data setiap 30 detik
+// =====================================================================
+
+const getRecordLimit = (timeRange) => {
+  switch (timeRange) {
+    case '12 Jam':
+      return 1440;
+
+    case '24 Jam':
+      return 2880;
+
+    case '3 Hari':
+      return 8640;
+
+    case '7 Hari':
+      return 20160;
+
+    default:
+      return 2880;
+  }
+};
+
+// =====================================================================
+// DURASI PERIODE
+// =====================================================================
+
+const getDurationMs = (timeRange) => {
+  switch (timeRange) {
+    case '12 Jam':
+      return 12 * 60 * 60 * 1000;
+
+    case '24 Jam':
+      return 24 * 60 * 60 * 1000;
+
+    case '3 Hari':
+      return 3 * 24 * 60 * 60 * 1000;
+
+    case '7 Hari':
+      return 7 * 24 * 60 * 60 * 1000;
+
+    default:
+      return 24 * 60 * 60 * 1000;
+  }
+};
+
+// =====================================================================
+// HELPER TANGGAL
 // =====================================================================
 
 const getDateRange = (
   selectedDate,
   selectedTimeRange
 ) => {
-  const start = new Date(
+  const selectedDay = new Date(
     `${selectedDate}T00:00:00`
   );
 
-  const end = new Date(start);
+  const now = new Date();
 
-  switch (selectedTimeRange) {
-    case '12 Jam':
-      end.setHours(end.getHours() + 12);
-      break;
+  const todayKey =
+    now.toLocaleDateString('en-CA');
 
-    case '3 Hari':
-      end.setDate(end.getDate() + 3);
-      break;
+  let start;
+  let end;
 
-    case '7 Hari':
-      end.setDate(end.getDate() + 7);
-      break;
+  // ================================================================
+  // JIKA HARI INI
+  // Periode berjalan mundur dari waktu sekarang.
+  // ================================================================
 
-    case '24 Jam':
-    default:
-      end.setDate(end.getDate() + 1);
-      break;
+  if (selectedDate === todayKey) {
+    const durationMs =
+      getDurationMs(
+        selectedTimeRange
+      );
+
+    start = new Date(
+      now.getTime() - durationMs
+    );
+
+    end = new Date(now);
+  } else {
+    start = new Date(selectedDay);
+
+    switch (selectedTimeRange) {
+      case '12 Jam':
+        end = new Date(
+          selectedDay.getTime() +
+            12 *
+              60 *
+              60 *
+              1000
+        );
+        break;
+
+      case '3 Hari':
+        end = new Date(selectedDay);
+        end.setDate(
+          end.getDate() + 3
+        );
+        break;
+
+      case '7 Hari':
+        end = new Date(selectedDay);
+        end.setDate(
+          end.getDate() + 7
+        );
+        break;
+
+      case '24 Jam':
+      default:
+        end = new Date(selectedDay);
+        end.setDate(
+          end.getDate() + 1
+        );
+        break;
+    }
   }
 
   return {
@@ -143,6 +231,10 @@ const getDateRange = (
     end: end.toISOString(),
   };
 };
+
+// =====================================================================
+// FORMAT NILAI
+// =====================================================================
 
 const formatValue = (
   value,
@@ -156,17 +248,80 @@ const formatValue = (
     return '-';
   }
 
-  const numericValue = Number(value);
+  const numericValue =
+    Number(value);
 
-  if (!Number.isFinite(numericValue)) {
+  if (
+    !Number.isFinite(
+      numericValue
+    )
+  ) {
     return '-';
   }
 
-  return numericValue.toFixed(decimals);
+  return numericValue.toFixed(
+    decimals
+  );
 };
 
-const getSensorStatus = (status) => {
-  switch (status) {
+// =====================================================================
+// NORMALISASI STATUS SENSOR
+// =====================================================================
+
+const normalizeStatusValue = (
+  status
+) => {
+  // Backend kadang mengirim:
+  //
+  // "normal"
+  //
+  // atau:
+  //
+  // {
+  //   status: "normal"
+  // }
+  //
+  // atau:
+  //
+  // {
+  //   state: "warning"
+  // }
+
+  if (
+    status &&
+    typeof status === 'object'
+  ) {
+    return (
+      status.status ??
+      status.state ??
+      status.sensor_status ??
+      status.value ??
+      null
+    );
+  }
+
+  return status;
+};
+
+// =====================================================================
+// STATUS SENSOR
+// =====================================================================
+
+const getSensorStatus = (
+  status
+) => {
+  const normalized =
+    normalizeStatusValue(
+      status
+    );
+
+  const value = String(
+    normalized ?? ''
+  )
+    .trim()
+    .toLowerCase();
+
+  switch (value) {
     case 'normal':
       return {
         label: 'Normal',
@@ -194,10 +349,42 @@ const getSensorStatus = (status) => {
           'bg-red-500',
       };
 
+    case 'offline':
+    case 'disconnected':
+      return {
+        label: 'Offline',
+        className:
+          'bg-red-50 text-red-700',
+        dotClassName:
+          'bg-red-500',
+      };
+
+    case 'online':
+    case 'connected':
+    case 'active':
+      return {
+        label: 'Online',
+        className:
+          'bg-green-50 text-green-700',
+        dotClassName:
+          'bg-green-500',
+      };
+
     case 'no_data':
-    default:
+    case 'nodata':
+    case 'no data':
+    case 'tidak ada data':
       return {
         label: 'Tidak Ada Data',
+        className:
+          'bg-gray-50 text-gray-600',
+        dotClassName:
+          'bg-gray-400',
+      };
+
+    default:
+      return {
+        label: 'Data',
         className:
           'bg-gray-50 text-gray-600',
         dotClassName:
@@ -207,12 +394,162 @@ const getSensorStatus = (status) => {
 };
 
 // =====================================================================
+// HELPER MENGAMBIL STATUS SENSOR
+//
+// Dibuat fleksibel untuk membaca beberapa kemungkinan struktur
+// yang dikirim oleh backend.
+// =====================================================================
+
+const getSensorBackendStatus = (
+  sensorStatus,
+  ...keys
+) => {
+  if (
+    !sensorStatus ||
+    typeof sensorStatus !== 'object'
+  ) {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (
+      sensorStatus[key] !==
+      undefined &&
+      sensorStatus[key] !==
+      null
+    ) {
+      return sensorStatus[key];
+    }
+  }
+
+  return null;
+};
+
+// =====================================================================
+// STATUS NODE DARI BACKEND
+// =====================================================================
+
+const getBackendNodeStatus = (
+  nodeStatus,
+  selectedNode
+) => {
+  if (!nodeStatus) {
+    return null;
+  }
+
+  let rawStatus = null;
+
+  // ================================================================
+  // Struktur:
+  //
+  // node_status: {
+  //   FRUIT_03: {
+  //     status: "online"
+  //   }
+  // }
+  // ================================================================
+
+  if (
+    nodeStatus &&
+    typeof nodeStatus === 'object' &&
+    nodeStatus[selectedNode] &&
+    typeof nodeStatus[selectedNode] === 'object'
+  ) {
+    rawStatus =
+      nodeStatus[selectedNode].status ??
+      nodeStatus[selectedNode].state ??
+      nodeStatus[selectedNode].node_status;
+  }
+
+  // ================================================================
+  // Struktur:
+  //
+  // node_status: {
+  //   FRUIT_03: "online"
+  // }
+  // ================================================================
+
+  if (
+    !rawStatus &&
+    nodeStatus &&
+    typeof nodeStatus === 'object' &&
+    typeof nodeStatus[selectedNode] === 'string'
+  ) {
+    rawStatus =
+      nodeStatus[selectedNode];
+  }
+
+  // ================================================================
+  // Struktur:
+  //
+  // node_status: {
+  //   status: "online"
+  // }
+  // ================================================================
+
+  if (
+    !rawStatus &&
+    nodeStatus &&
+    typeof nodeStatus === 'object'
+  ) {
+    rawStatus =
+      nodeStatus.status ??
+      nodeStatus.state ??
+      nodeStatus.node_status;
+  }
+
+  // ================================================================
+  // Struktur:
+  //
+  // node_status: "online"
+  // ================================================================
+
+  if (
+    !rawStatus &&
+    typeof nodeStatus === 'string'
+  ) {
+    rawStatus = nodeStatus;
+  }
+
+  // ================================================================
+  // Boolean
+  // ================================================================
+
+  if (
+    rawStatus === true
+  ) {
+    return 'online';
+  }
+
+  if (
+    rawStatus === false
+  ) {
+    return 'offline';
+  }
+
+  if (
+    rawStatus === null ||
+    rawStatus === undefined ||
+    rawStatus === ''
+  ) {
+    return null;
+  }
+
+  return String(rawStatus)
+    .trim()
+    .toLowerCase();
+};
+
+// =====================================================================
 // KOMPONEN UTAMA
 // =====================================================================
 
 export default function FruitEnzyme() {
-  const location = useLocation();
-  const currentPath = location.pathname;
+  const location =
+    useLocation();
+
+  const currentPath =
+    location.pathname;
 
   const [
     isMobileMenuOpen,
@@ -232,22 +569,25 @@ export default function FruitEnzyme() {
   const [
     selectedIndicator,
     setSelectedIndicator,
-  ] = useState('temperature_c');
+  ] = useState(
+    'temperature_c'
+  );
 
   const [
     selectedTimeRange,
     setSelectedTimeRange,
-  ] = useState('24 Jam');
+  ] = useState(
+    '24 Jam'
+  );
 
   const [
     selectedDate,
     setSelectedDate,
   ] = useState(() => {
-    const today = new Date();
-
-    return today.toLocaleDateString(
-      'en-CA'
-    );
+    return new Date()
+      .toLocaleDateString(
+        'en-CA'
+      );
   });
 
   const [
@@ -272,7 +612,8 @@ export default function FruitEnzyme() {
 
   const POLLING_INTERVAL =
     Number(
-      import.meta.env.VITE_POLLING_INTERVAL
+      import.meta.env
+        .VITE_POLLING_INTERVAL
     ) || 10000;
 
   // ===================================================================
@@ -280,70 +621,103 @@ export default function FruitEnzyme() {
   // ===================================================================
 
   useEffect(() => {
-    setIsMobileMenuOpen(false);
+    setIsMobileMenuOpen(
+      false
+    );
   }, [currentPath]);
 
   // ===================================================================
   // FILTER TANGGAL
   // ===================================================================
 
-  const dateRange = useMemo(
-    () =>
-      getDateRange(
+  const dateRange =
+    useMemo(
+      () =>
+        getDateRange(
+          selectedDate,
+          selectedTimeRange
+        ),
+      [
         selectedDate,
-        selectedTimeRange
-      ),
-    [
-      selectedDate,
-      selectedTimeRange,
-    ]
-  );
+        selectedTimeRange,
+      ]
+    );
 
   // ===================================================================
-  // LOAD DATA BACKEND
+  // LIMIT DATA
+  // ===================================================================
+
+  const recordLimit =
+    useMemo(
+      () =>
+        getRecordLimit(
+          selectedTimeRange
+        ),
+      [selectedTimeRange]
+    );
+
+  // ===================================================================
+  // FETCH DATA
   // ===================================================================
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadData = async () => {
-      try {
-        const result = await fetchBI({
-          node_id: selectedNode,
-          start: dateRange.start,
-          end: dateRange.end,
-          limit: 100,
-        });
+    const loadData =
+      async () => {
+        try {
+          const result =
+            await fetchBI({
+              node_id:
+                selectedNode,
 
-        if (!isMounted) {
-          return;
-        }
+              start:
+                dateRange.start,
 
-        setBiData(result);
-        setApiAvailable(true);
-        setError(null);
-      } catch (err) {
-        console.error(
-          '[FRUIT ENZYME] Gagal memuat data:',
-          err
-        );
+              end:
+                dateRange.end,
 
-        if (isMounted) {
-          setBiData(null);
-          setApiAvailable(false);
+              limit:
+                recordLimit,
+            });
 
-          setError(
-            'Backend tidak dapat diakses. Data sensor belum tersedia.'
+          if (!isMounted) {
+            return;
+          }
+
+          setBiData(result);
+
+          setApiAvailable(
+            true
           );
+
+          setError(null);
+        } catch (err) {
+          console.error(
+            '[FRUIT ENZYME] Gagal memuat data:',
+            err
+          );
+
+          if (isMounted) {
+            setBiData(null);
+
+            setApiAvailable(
+              false
+            );
+
+            setError(
+              'Backend tidak dapat diakses. Data sensor belum tersedia.'
+            );
+          }
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
         }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
+      };
 
     setLoading(true);
+
     loadData();
 
     const intervalId =
@@ -354,153 +728,232 @@ export default function FruitEnzyme() {
 
     return () => {
       isMounted = false;
-      clearInterval(intervalId);
+
+      clearInterval(
+        intervalId
+      );
     };
   }, [
     selectedNode,
     dateRange.start,
     dateRange.end,
+    recordLimit,
     POLLING_INTERVAL,
   ]);
 
   // ===================================================================
-  // DATA BACKEND
+  // DATA TERBARU
   // ===================================================================
 
   const latest =
     biData?.latest || null;
 
-  const timeSeries = useMemo(() => {
-    const rows = Array.isArray(
-      biData?.raw_data?.data
-    )
-      ? biData.raw_data.data
-      : [];
+  // ===================================================================
+  // TIME SERIES
+  //
+  // Data dengan timestamp masa depan tidak ditampilkan.
+  // ===================================================================
 
-    return [...rows].sort(
-      (a, b) =>
-        new Date(a.timestamp) -
-        new Date(b.timestamp)
-    );
-  }, [biData]);
+  const timeSeries =
+    useMemo(() => {
+      const rows =
+        Array.isArray(
+          biData?.raw_data?.data
+        )
+          ? biData.raw_data.data
+          : [];
 
-  const totalRows =
-    Number(
-      biData?.raw_data?.count
-    ) || 0;
+      const now =
+        Date.now();
 
-  const sensorStatus =
-    biData?.sensor_status || {};
+      return [...rows]
+        .filter((item) => {
+          const timestamp =
+            new Date(
+              item.timestamp
+            ).getTime();
 
-  const networkStatus =
-    biData?.network_status || {};
+          return (
+            Number.isFinite(
+              timestamp
+            ) &&
+            timestamp <= now
+          );
+        })
+        .sort(
+          (a, b) =>
+            new Date(
+              a.timestamp
+            ).getTime() -
+            new Date(
+              b.timestamp
+            ).getTime()
+        );
+    }, [biData]);
 
   // ===================================================================
-  // STATUS SENSOR
+  // TOTAL RECORD
+  // ===================================================================
+
+  const totalRows =
+    useMemo(() => {
+      const backendCount =
+        Number(
+          biData?.raw_data?.count
+        );
+
+      if (
+        Number.isFinite(
+          backendCount
+        ) &&
+        backendCount >= 0
+      ) {
+        return backendCount;
+      }
+
+      return timeSeries.length;
+    }, [
+      biData,
+      timeSeries,
+    ]);
+
+  // ===================================================================
+  // STATUS DARI BACKEND
+  // ===================================================================
+
+  const sensorStatus =
+    biData?.sensor_status ||
+    {};
+
+  const networkStatus =
+    biData?.network_status ||
+    {};
+
+  // ===================================================================
+  // STATUS SUHU
   // ===================================================================
 
   const temperatureStatus =
     getSensorStatus(
-      sensorStatus.temperature
+      getSensorBackendStatus(
+        sensorStatus,
+        'temperature',
+        'temperature_c',
+        'temp'
+      )
     );
+
+  // ===================================================================
+  // STATUS GAS
+  //
+  // PRIORITAS:
+  // gas_adc -> gas
+  // ===================================================================
+
+  const gasBackendStatus =
+    getSensorBackendStatus(
+      sensorStatus,
+      'gas_adc',
+      'gas'
+    );
+
+  const gasStatus =
+    getSensorStatus(
+      gasBackendStatus
+    );
+
+  // ===================================================================
+  // STATUS pH
+  // ===================================================================
 
   const phStatus =
     getSensorStatus(
-      sensorStatus.ph
+      getSensorBackendStatus(
+        sensorStatus,
+        'ph'
+      )
     );
+
+  // ===================================================================
+  // STATUS TEKANAN
+  // ===================================================================
 
   const pressureStatus =
     getSensorStatus(
-      sensorStatus.pressure
+      getSensorBackendStatus(
+        sensorStatus,
+        'pressure',
+        'pressure_kpa'
+      )
     );
+
+  // ===================================================================
+  // STATUS TDS
+  // ===================================================================
 
   const tdsStatus =
     getSensorStatus(
-      sensorStatus.tds
+      getSensorBackendStatus(
+        sensorStatus,
+        'tds',
+        'tds_ppm'
+      )
+    );
+
+  // ===================================================================
+  // STATUS ALKOHOL MQ3
+  //
+  // PRIORITAS:
+  // mq3_adc -> mq3 -> alcohol -> alkohol
+  // ===================================================================
+
+  const mq3BackendStatus =
+    getSensorBackendStatus(
+      sensorStatus,
+      'mq3_adc',
+      'mq3',
+      'alcohol',
+      'alkohol'
+    );
+
+  const mq3Status =
+    getSensorStatus(
+      mq3BackendStatus
     );
 
   // ===================================================================
   // STATUS NODE
+  // SEPENUHNYA MENGIKUTI BACKEND
   // ===================================================================
 
-  const lastSeen =
-    latest?.timestamp ||
-    biData?.overview?.last_reading ||
-    null;
+  const backendNodeStatus =
+    biData?.node_status;
 
-  const getNodeStatus = () => {
-    if (!apiAvailable) {
-      return {
-        label: 'Tidak Tersedia',
-        className:
-          'bg-gray-50 text-gray-600',
-        dotClassName:
-          'bg-gray-400',
-      };
-    }
-
-    if (!lastSeen) {
-      return {
-        label: 'Tidak Ada Data',
-        className:
-          'bg-gray-50 text-gray-600',
-        dotClassName:
-          'bg-gray-400',
-      };
-    }
-
-    const lastSeenTime =
-      new Date(lastSeen).getTime();
-
-    if (Number.isNaN(lastSeenTime)) {
-      return {
-        label: 'Tidak Ada Data',
-        className:
-          'bg-gray-50 text-gray-600',
-        dotClassName:
-          'bg-gray-400',
-      };
-    }
-
-    const ageSeconds =
-      (Date.now() -
-        lastSeenTime) /
-      1000;
-
-    if (ageSeconds <= 60) {
-      return {
-        label: 'Online',
-        className:
-          'bg-green-50 text-green-700',
-        dotClassName:
-          'bg-green-500',
-      };
-    }
-
-    if (ageSeconds <= 180) {
-      return {
-        label: 'Warning',
-        className:
-          'bg-yellow-50 text-yellow-700',
-        dotClassName:
-          'bg-yellow-500',
-      };
-    }
-
-    return {
-      label: 'Offline',
-      className:
-        'bg-red-50 text-red-700',
-      dotClassName:
-        'bg-red-500',
-    };
-  };
+  const rawNodeStatus =
+    getBackendNodeStatus(
+      backendNodeStatus,
+      selectedNode
+    );
 
   const nodeStatus =
-    getNodeStatus();
+    apiAvailable &&
+    rawNodeStatus
+      ? getSensorStatus(
+          rawNodeStatus
+        )
+      : {
+          label:
+            'Tidak Ada Data',
+
+          className:
+            'bg-gray-50 text-gray-600',
+
+          dotClassName:
+            'bg-gray-400',
+        };
 
   // ===================================================================
-  // INDIKATOR
+  // INDIKATOR AKTIF
   // ===================================================================
 
   const currentConfig =
@@ -510,7 +963,7 @@ export default function FruitEnzyme() {
     INDICATOR_MAP.temperature_c;
 
   // ===================================================================
-  // GRAFIK
+  // GENERATE GRAFIK
   // ===================================================================
 
   const generateSvgPoints = (
@@ -524,15 +977,47 @@ export default function FruitEnzyme() {
       return '0,50 800,50';
     }
 
-    const values = dataArray
-      .map((item) =>
-        Number(item[field])
-      )
-      .filter(Number.isFinite);
+    const now =
+      Date.now();
 
-    if (values.length === 0) {
+    const validData =
+      dataArray.filter(
+        (item) => {
+          const value =
+            Number(
+              item[field]
+            );
+
+          const timestamp =
+            new Date(
+              item.timestamp
+            ).getTime();
+
+          return (
+            Number.isFinite(
+              value
+            ) &&
+            Number.isFinite(
+              timestamp
+            ) &&
+            timestamp <= now
+          );
+        }
+      );
+
+    if (
+      validData.length === 0
+    ) {
       return '0,50 800,50';
     }
+
+    const values =
+      validData.map(
+        (item) =>
+          Number(
+            item[field]
+          )
+      );
 
     const minVal =
       Math.min(...values);
@@ -545,26 +1030,52 @@ export default function FruitEnzyme() {
         ? 1
         : maxVal - minVal;
 
-    return dataArray
-      .map((item, index) => {
-        const value =
-          Number(item[field]);
+    const timestamps =
+      validData.map(
+        (item) =>
+          new Date(
+            item.timestamp
+          ).getTime()
+      );
 
-        if (
-          !Number.isFinite(value)
-        ) {
-          return null;
-        }
+    const minTime =
+      Math.min(...timestamps);
+
+    const maxTime =
+      Math.min(
+        Math.max(
+          ...timestamps
+        ),
+        now
+      );
+
+    const timeRange =
+      maxTime - minTime === 0
+        ? 1
+        : maxTime - minTime;
+
+    return validData
+      .map((item) => {
+        const value =
+          Number(
+            item[field]
+          );
+
+        const timestamp =
+          new Date(
+            item.timestamp
+          ).getTime();
 
         const x =
-          (index /
-            (dataArray.length -
-              1 || 1)) *
+          ((timestamp -
+            minTime) /
+            timeRange) *
           800;
 
         const y =
           100 -
-          ((value - minVal) /
+          ((value -
+            minVal) /
             range) *
             80 -
           10;
@@ -573,7 +1084,6 @@ export default function FruitEnzyme() {
           1
         )},${y.toFixed(1)}`;
       })
-      .filter(Boolean)
       .join(' ');
   };
 
@@ -583,8 +1093,201 @@ export default function FruitEnzyme() {
       selectedIndicator
     );
 
-  const chartPointArray =
-    chartPoints.split(' ');
+  // ===================================================================
+  // TICK GRAFIK
+  // ===================================================================
+
+  const chartTicks =
+    useMemo(() => {
+      if (
+        timeSeries.length === 0
+      ) {
+        return [];
+      }
+
+      const now =
+        Date.now();
+
+      const timestamps =
+        timeSeries
+          .map((item) =>
+            new Date(
+              item.timestamp
+            ).getTime()
+          )
+          .filter(
+            (time) =>
+              Number.isFinite(
+                time
+              ) &&
+              time <= now
+          );
+
+      if (
+        timestamps.length === 0
+      ) {
+        return [];
+      }
+
+      const firstTime =
+        Math.min(...timestamps);
+
+      const lastTime =
+        Math.min(
+          Math.max(
+            ...timestamps
+          ),
+          now
+        );
+
+      const durationHours =
+        Math.max(
+          0.01,
+          (lastTime -
+            firstTime) /
+            (1000 * 60 * 60)
+        );
+
+      let intervalHours;
+
+      if (
+        durationHours <= 6
+      ) {
+        intervalHours = 1;
+      } else if (
+        durationHours <= 12
+      ) {
+        intervalHours = 2;
+      } else if (
+        durationHours <= 24
+      ) {
+        intervalHours = 4;
+      } else if (
+        durationHours <= 72
+      ) {
+        intervalHours = 12;
+      } else {
+        intervalHours = 24;
+      }
+
+      const intervalMs =
+        intervalHours *
+        60 *
+        60 *
+        1000;
+
+      const ticks = [];
+
+      let time =
+        Math.ceil(
+          firstTime /
+            intervalMs
+        ) *
+        intervalMs;
+
+      while (
+        time < firstTime
+      ) {
+        time +=
+          intervalMs;
+      }
+
+      for (
+        ;
+        time < lastTime;
+        time +=
+          intervalMs
+      ) {
+        const position =
+          ((time -
+            firstTime) /
+            Math.max(
+              1,
+              lastTime -
+                firstTime
+            )) *
+          100;
+
+        ticks.push({
+          position,
+          label:
+            new Date(
+              time
+            ).toLocaleTimeString(
+              'id-ID',
+              {
+                hour: '2-digit',
+                minute:
+                  '2-digit',
+                hour12: false,
+              }
+            ),
+        });
+      }
+
+      const formatTime =
+        (timestamp) =>
+          new Date(
+            timestamp
+          ).toLocaleTimeString(
+            'id-ID',
+            {
+              hour: '2-digit',
+              minute:
+                '2-digit',
+              hour12: false,
+            }
+          );
+
+      // Label awal
+      ticks.unshift({
+        position: 0,
+        label:
+          formatTime(
+            firstTime
+          ),
+      });
+
+      // Label akhir = waktu data terakhir / sekarang
+      if (
+        lastTime >
+        firstTime
+      ) {
+        ticks.push({
+          position: 100,
+          label:
+            formatTime(
+              lastTime
+            ),
+        });
+      }
+
+      // Hindari label terlalu berdekatan
+      return ticks.filter(
+        (
+          tick,
+          index,
+          arr
+        ) => {
+          if (
+            index === 0 ||
+            index ===
+              arr.length - 1
+          ) {
+            return true;
+          }
+
+          const previous =
+            arr[index - 1];
+
+          return (
+            tick.position -
+              previous.position >=
+            10
+          );
+        }
+      );
+    }, [timeSeries]);
 
   // ===================================================================
   // RENDER
@@ -593,9 +1296,9 @@ export default function FruitEnzyme() {
   return (
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
 
-      {/* ============================================================= */}
-      {/* MOBILE OVERLAY */}
-      {/* ============================================================= */}
+      {/* =============================================================
+          MOBILE OVERLAY
+          ============================================================= */}
 
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -619,9 +1322,9 @@ export default function FruitEnzyme() {
         )}
       </AnimatePresence>
 
-      {/* ============================================================= */}
-      {/* SIDEBAR */}
-      {/* ============================================================= */}
+      {/* =============================================================
+          SIDEBAR
+          ============================================================= */}
 
       <Sidebar
         isCollapsed={
@@ -642,15 +1345,15 @@ export default function FruitEnzyme() {
         activeTitle="Fruit Enzyme Active"
       />
 
-      {/* ============================================================= */}
-      {/* MAIN */}
-      {/* ============================================================= */}
+      {/* =============================================================
+          MAIN
+          ============================================================= */}
 
       <main className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
 
-        {/* =========================================================== */}
-        {/* HEADER */}
-        {/* =========================================================== */}
+        {/* ===========================================================
+            HEADER
+            =========================================================== */}
 
         <header className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 lg:px-10 z-10 flex-shrink-0">
 
@@ -683,11 +1386,12 @@ export default function FruitEnzyme() {
               </p>
 
             </div>
+
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 flex-shrink-0">
 
-            {/* WAKTU TERBARU */}
+            {/* WAKTU DATA TERBARU */}
 
             <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 text-xs font-semibold text-gray-600">
 
@@ -751,11 +1455,12 @@ export default function FruitEnzyme() {
             </button>
 
           </div>
+
         </header>
 
-        {/* =========================================================== */}
-        {/* CONTENT */}
-        {/* =========================================================== */}
+        {/* ===========================================================
+            CONTENT
+            =========================================================== */}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
 
@@ -768,9 +1473,9 @@ export default function FruitEnzyme() {
             className="max-w-7xl mx-auto space-y-6 sm:space-y-8"
           >
 
-            {/* ======================================================= */}
-            {/* FILTER */}
-            {/* ======================================================= */}
+            {/* =======================================================
+                FILTER
+                ======================================================= */}
 
             <motion.div
               variants={fadeInUp}
@@ -864,9 +1569,9 @@ export default function FruitEnzyme() {
 
             </motion.div>
 
-            {/* ======================================================= */}
-            {/* SENSOR CARDS */}
-            {/* ======================================================= */}
+            {/* =======================================================
+                SENSOR CARDS
+                ======================================================= */}
 
             <motion.div
               variants={fadeInUp}
@@ -874,113 +1579,178 @@ export default function FruitEnzyme() {
             >
 
               {[
+                // ---------------------------------------------------
+                // SUHU
+                // ---------------------------------------------------
+
                 {
                   label: 'Suhu',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? latest?.temperature_c !=
-                      null
-                      ? `${formatValue(
-                          latest.temperature_c,
-                          1
-                        )}°C`
-                      : '-'
-                    : '-',
-                  icon: Thermometer,
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? latest?.temperature_c !=
+                        null
+                        ? `${formatValue(
+                            latest.temperature_c,
+                            1
+                          )}°C`
+                        : '-'
+                      : '-',
+
+                  icon:
+                    Thermometer,
+
                   color:
                     'text-orange-500',
+
                   status:
                     temperatureStatus,
                 },
 
+                // ---------------------------------------------------
+                // GAS
+                // STATUS DARI BACKEND
+                // ---------------------------------------------------
+
                 {
-                  label: 'Gas (ADC)',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? formatValue(
-                        latest?.gas_adc,
-                        0
-                      )
-                    : '-',
+                  label:
+                    'Gas (ADC)',
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? formatValue(
+                          latest?.gas_adc,
+                          0
+                        )
+                      : '-',
+
                   icon: Wind,
+
                   color:
                     'text-blue-500',
-                  status: null,
+
+                  status:
+                    gasStatus,
                 },
+
+                // ---------------------------------------------------
+                // pH
+                // ---------------------------------------------------
 
                 {
                   label: 'pH',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? formatValue(
-                        latest?.ph,
-                        2
-                      )
-                    : '-',
-                  icon: Droplet,
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? formatValue(
+                          latest?.ph,
+                          2
+                        )
+                      : '-',
+
+                  icon:
+                    Droplet,
+
                   color:
                     'text-amber-600',
-                  status: phStatus,
+
+                  status:
+                    phStatus,
                 },
 
+                // ---------------------------------------------------
+                // TEKANAN
+                // ---------------------------------------------------
+
                 {
-                  label: 'Tekanan',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? latest?.pressure_kpa !=
-                      null
-                      ? `${formatValue(
-                          latest.pressure_kpa,
-                          2
-                        )} kPa`
-                      : '-'
-                    : '-',
-                  icon: Gauge,
+                  label:
+                    'Tekanan',
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? latest?.pressure_kpa !=
+                        null
+                        ? `${formatValue(
+                            latest.pressure_kpa,
+                            2
+                          )} kPa`
+                        : '-'
+                      : '-',
+
+                  icon:
+                    Gauge,
+
                   color:
                     'text-purple-500',
+
                   status:
                     pressureStatus,
                 },
 
+                // ---------------------------------------------------
+                // TDS
+                // ---------------------------------------------------
+
                 {
                   label: 'TDS',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? latest?.tds_ppm !=
-                      null
-                      ? `${formatValue(
-                          latest.tds_ppm,
-                          0
-                        )} ppm`
-                      : '-'
-                    : '-',
-                  icon: Activity,
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? latest?.tds_ppm !=
+                        null
+                        ? `${formatValue(
+                            latest.tds_ppm,
+                            0
+                          )} ppm`
+                        : '-'
+                      : '-',
+
+                  icon:
+                    Activity,
+
                   color:
                     'text-indigo-500',
+
                   status:
                     tdsStatus,
                 },
 
+                // ---------------------------------------------------
+                // ALKOHOL MQ3
+                // STATUS DARI BACKEND
+                // ---------------------------------------------------
+
                 {
                   label:
                     'Alkohol (MQ3)',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? formatValue(
-                        latest?.mq3_adc,
-                        0
-                      )
-                    : '-',
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? formatValue(
+                          latest?.mq3_adc,
+                          0
+                        )
+                      : '-',
+
                   icon: Zap,
+
                   color:
                     'text-amber-500',
-                  status: null,
+
+                  status:
+                    mq3Status,
                 },
               ].map(
                 (
@@ -993,7 +1763,9 @@ export default function FruitEnzyme() {
 
                   return (
                     <div
-                      key={index}
+                      key={
+                        index
+                      }
                       className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between"
                     >
 
@@ -1051,15 +1823,15 @@ export default function FruitEnzyme() {
 
             </motion.div>
 
-            {/* ======================================================= */}
-            {/* GRAFIK + STATUS NODE */}
-            {/* ======================================================= */}
+            {/* =======================================================
+                GRAFIK + STATUS NODE
+                ======================================================= */}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-              {/* ===================================================== */}
-              {/* GRAFIK */}
-              {/* ===================================================== */}
+              {/* =====================================================
+                  GRAFIK
+                  ===================================================== */}
 
               <motion.div
                 variants={fadeInUp}
@@ -1079,7 +1851,9 @@ export default function FruitEnzyme() {
 
                     <p className="text-xs text-gray-400">
                       {apiAvailable
-                        ? `Data monitoring (${timeSeries.length} titik data)`
+                        ? `Data monitoring (${timeSeries.length.toLocaleString(
+                            'id-ID'
+                          )} titik data)`
                         : 'Data belum tersedia'}
                     </p>
 
@@ -1136,6 +1910,8 @@ export default function FruitEnzyme() {
 
                 <div className="h-60 w-full bg-white rounded-2xl border border-gray-100 p-2 sm:p-4 relative flex flex-col justify-between">
 
+                  {/* LABEL Y */}
+
                   <div className="absolute left-1 sm:left-2 top-4 bottom-8 flex flex-col justify-between text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pointer-events-none">
 
                     <span>
@@ -1151,6 +1927,8 @@ export default function FruitEnzyme() {
                     </span>
 
                   </div>
+
+                  {/* GRAFIK */}
 
                   <div className="relative z-10 w-full h-40 flex items-center pl-6 sm:pl-8 pr-2">
 
@@ -1180,63 +1958,41 @@ export default function FruitEnzyme() {
                             currentConfig.color
                           }
                           strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           points={
                             chartPoints
                           }
+                          vectorEffect="non-scaling-stroke"
                         />
-
-                        {chartPointArray.map(
-                          (
-                            point,
-                            index
-                          ) => {
-
-                            if (
-                              !point
-                            ) {
-                              return null;
-                            }
-
-                            const [
-                              cx,
-                              cy,
-                            ] =
-                              point.split(
-                                ','
-                              );
-
-                            return (
-                              <circle
-                                key={
-                                  index
-                                }
-                                cx={cx}
-                                cy={cy}
-                                r="3"
-                                fill="white"
-                                stroke={
-                                  currentConfig.color
-                                }
-                                strokeWidth="2"
-                              />
-                            );
-                          }
-                        )}
 
                       </svg>
                     )}
 
                   </div>
 
-                  <div className="relative z-10 flex justify-between pl-6 sm:pl-8 pr-2 text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pt-2 border-t border-gray-100">
+                  {/* LABEL X */}
 
-                    <span>
-                      Awal Data
-                    </span>
+                  <div className="relative z-10 h-5 ml-6 sm:ml-8 mr-2 border-t border-gray-100 select-none">
 
-                    <span>
-                      Terbaru
-                    </span>
+                    {chartTicks.map(
+                      (
+                        tick,
+                        index
+                      ) => (
+                        <span
+                          key={`${tick.label}-${index}`}
+                          className="absolute top-2 -translate-x-1/2 whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-gray-400"
+                          style={{
+                            left: `${tick.position}%`,
+                          }}
+                        >
+                          {
+                            tick.label
+                          }
+                        </span>
+                      )
+                    )}
 
                   </div>
 
@@ -1244,9 +2000,9 @@ export default function FruitEnzyme() {
 
               </motion.div>
 
-              {/* ===================================================== */}
-              {/* STATUS NODE */}
-              {/* ===================================================== */}
+              {/* =====================================================
+                  STATUS NODE
+                  ===================================================== */}
 
               <motion.div
                 variants={fadeInUp}
@@ -1284,13 +2040,17 @@ export default function FruitEnzyme() {
 
                   <p className="text-sm font-bold text-gray-800 mb-1">
                     Node ID:{' '}
-                    {selectedNode}
+                    {
+                      selectedNode
+                    }
                   </p>
 
                   <p className="text-xs text-gray-400 mb-4">
                     Total Record:{' '}
                     {apiAvailable
-                      ? totalRows
+                      ? totalRows.toLocaleString(
+                          'id-ID'
+                        )
                       : '-'}
                   </p>
 
@@ -1315,7 +2075,9 @@ export default function FruitEnzyme() {
 
                 </div>
 
-                {/* NETWORK */}
+                {/* ===================================================
+                    NETWORK
+                    =================================================== */}
 
                 <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100 flex items-center justify-between">
 
@@ -1369,7 +2131,9 @@ export default function FruitEnzyme() {
           </motion.div>
 
         </div>
+
       </main>
+
     </div>
   );
 }

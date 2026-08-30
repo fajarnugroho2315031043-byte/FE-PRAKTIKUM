@@ -106,36 +106,103 @@ const INDICATOR_MAP = {
 };
 
 // =====================================================================
-// HELPER
+// JUMLAH DATA BERDASARKAN PERIODE
+// Sensor mengirim data setiap 30 detik
+// =====================================================================
+
+const getRecordLimit = (timeRange) => {
+  switch (timeRange) {
+    case '12 Jam':
+      return (12 * 60 * 60) / 30;
+
+    case '24 Jam':
+      return (24 * 60 * 60) / 30;
+
+    case '3 Hari':
+      return (3 * 24 * 60 * 60) / 30;
+
+    case '7 Hari':
+      return (7 * 24 * 60 * 60) / 30;
+
+    default:
+      return 2880;
+  }
+};
+
+// =====================================================================
+// HELPER TANGGAL
 // =====================================================================
 
 const getDateRange = (
   selectedDate,
   selectedTimeRange
 ) => {
-  const start = new Date(
+  const selectedDay = new Date(
     `${selectedDate}T00:00:00`
   );
 
-  let end = new Date(start);
+  let start;
+  let end;
 
-  switch (selectedTimeRange) {
-    case '12 Jam':
-      end.setHours(end.getHours() + 12);
-      break;
+  const today = new Date();
 
-    case '3 Hari':
-      end.setDate(end.getDate() + 3);
-      break;
+  const todayKey =
+    today.toLocaleDateString('en-CA');
 
-    case '7 Hari':
-      end.setDate(end.getDate() + 7);
-      break;
+  // ---------------------------------------------------------------
+  // Jika tanggal yang dipilih adalah hari ini dan periode 12/24 jam,
+  // ambil data mundur dari waktu sekarang.
+  // ---------------------------------------------------------------
 
-    case '24 Jam':
-    default:
-      end.setDate(end.getDate() + 1);
-      break;
+  if (
+    selectedDate === todayKey &&
+    (
+      selectedTimeRange === '12 Jam' ||
+      selectedTimeRange === '24 Jam'
+    )
+  ) {
+    end = today;
+    start = new Date(today);
+
+    if (selectedTimeRange === '12 Jam') {
+      start.setHours(
+        start.getHours() - 12
+      );
+    } else {
+      start.setHours(
+        start.getHours() - 24
+      );
+    }
+  } else {
+    start = new Date(selectedDay);
+    end = new Date(selectedDay);
+
+    switch (selectedTimeRange) {
+      case '12 Jam':
+        end.setHours(
+          end.getHours() + 12
+        );
+        break;
+
+      case '3 Hari':
+        end.setDate(
+          end.getDate() + 3
+        );
+        break;
+
+      case '7 Hari':
+        end.setDate(
+          end.getDate() + 7
+        );
+        break;
+
+      case '24 Jam':
+      default:
+        end.setDate(
+          end.getDate() + 1
+        );
+        break;
+    }
   }
 
   return {
@@ -143,6 +210,10 @@ const getDateRange = (
     end: end.toISOString(),
   };
 };
+
+// =====================================================================
+// FORMAT NILAI
+// =====================================================================
 
 const formatValue = (
   value,
@@ -165,14 +236,66 @@ const formatValue = (
   return number.toFixed(decimals);
 };
 
+// =====================================================================
+// STATUS SENSOR
+// Backend menjadi sumber utama status sensor.
+//
+// Fungsi ini dibuat sedikit lebih fleksibel supaya bisa membaca:
+//
+// sensor_status.gas_adc
+// sensor_status.mq3_adc
+// sensor_status.gas
+// sensor_status.mq3
+//
+// Jika backend mengirim object seperti:
+// { status: "normal" }
+//
+// juga tetap bisa dibaca.
+// =====================================================================
+
+const normalizeSensorStatus = (status) => {
+  if (
+    status &&
+    typeof status === 'object'
+  ) {
+    return (
+      status.status ||
+      status.state ||
+      status.label ||
+      null
+    );
+  }
+
+  return status;
+};
+
 const getSensorStatus = (status) => {
-  switch (status) {
+  const normalized =
+    normalizeSensorStatus(status);
+
+  if (!normalized) {
+    return {
+      label: 'Data',
+      className:
+        'bg-gray-50 text-gray-600',
+      dotClassName:
+        'bg-gray-400',
+    };
+  }
+
+  const value =
+    String(normalized)
+      .toLowerCase()
+      .trim();
+
+  switch (value) {
     case 'normal':
       return {
         label: 'Normal',
         className:
           'bg-green-50 text-green-700',
-        dotClassName: 'bg-green-500',
+        dotClassName:
+          'bg-green-500',
       };
 
     case 'warning':
@@ -193,10 +316,29 @@ const getSensorStatus = (status) => {
           'bg-red-500',
       };
 
+    case 'offline':
+      return {
+        label: 'Offline',
+        className:
+          'bg-red-50 text-red-700',
+        dotClassName:
+          'bg-red-500',
+      };
+
     case 'no_data':
-    default:
+    case 'no data':
+    case 'tidak ada data':
       return {
         label: 'Tidak Ada Data',
+        className:
+          'bg-gray-50 text-gray-600',
+        dotClassName:
+          'bg-gray-400',
+      };
+
+    default:
+      return {
+        label: 'Data',
         className:
           'bg-gray-50 text-gray-600',
         dotClassName:
@@ -300,6 +442,18 @@ export default function EcoEnzyme() {
   );
 
   // ===================================================================
+  // LIMIT DATA
+  // ===================================================================
+
+  const recordLimit = useMemo(
+    () =>
+      getRecordLimit(
+        selectedTimeRange
+      ),
+    [selectedTimeRange]
+  );
+
+  // ===================================================================
   // FETCH DATA
   // ===================================================================
 
@@ -312,7 +466,7 @@ export default function EcoEnzyme() {
           node_id: selectedNode,
           start: dateRange.start,
           end: dateRange.end,
-          limit: 100,
+          limit: recordLimit,
         });
 
         if (!isMounted) {
@@ -359,6 +513,7 @@ export default function EcoEnzyme() {
     selectedNode,
     dateRange.start,
     dateRange.end,
+    recordLimit,
     POLLING_INTERVAL,
   ]);
 
@@ -383,10 +538,29 @@ export default function EcoEnzyme() {
     );
   }, [biData]);
 
-  const totalRows =
-    Number(
-      biData?.raw_data?.count
-    ) || 0;
+  // ===================================================================
+  // TOTAL RECORD
+  // ===================================================================
+
+  const totalRows = useMemo(() => {
+    const backendCount =
+      Number(
+        biData?.raw_data?.count
+      );
+
+    if (
+      Number.isFinite(backendCount) &&
+      backendCount >= 0
+    ) {
+      return backendCount;
+    }
+
+    return timeSeries.length;
+  }, [biData, timeSeries]);
+
+  // ===================================================================
+  // STATUS DARI BACKEND
+  // ===================================================================
 
   const sensorStatus =
     biData?.sensor_status || {};
@@ -395,12 +569,18 @@ export default function EcoEnzyme() {
     biData?.network_status || {};
 
   // ===================================================================
-  // STATUS SENSOR
+  // STATUS MASING-MASING SENSOR
   // ===================================================================
 
   const temperatureStatus =
     getSensorStatus(
       sensorStatus.temperature
+    );
+
+  const gasStatus =
+    getSensorStatus(
+      sensorStatus.gas_adc ??
+      sensorStatus.gas
     );
 
   const phStatus =
@@ -416,6 +596,12 @@ export default function EcoEnzyme() {
   const tdsStatus =
     getSensorStatus(
       sensorStatus.tds
+    );
+
+  const mq3Status =
+    getSensorStatus(
+      sensorStatus.mq3_adc ??
+      sensorStatus.mq3
     );
 
   // ===================================================================
@@ -543,8 +729,29 @@ export default function EcoEnzyme() {
         ? 1
         : maxVal - minVal;
 
+    const timestamps = dataArray
+      .map((item) =>
+        new Date(item.timestamp).getTime()
+      )
+      .filter(Number.isFinite);
+
+    const minTime =
+      timestamps.length > 0
+        ? Math.min(...timestamps)
+        : 0;
+
+    const maxTime =
+      timestamps.length > 0
+        ? Math.max(...timestamps)
+        : 1;
+
+    const timeRange =
+      maxTime - minTime === 0
+        ? 1
+        : maxTime - minTime;
+
     return dataArray
-      .map((item, index) => {
+      .map((item) => {
         const value =
           Number(item[field]);
 
@@ -554,10 +761,20 @@ export default function EcoEnzyme() {
           return null;
         }
 
+        const timestamp =
+          new Date(
+            item.timestamp
+          ).getTime();
+
+        if (
+          !Number.isFinite(timestamp)
+        ) {
+          return null;
+        }
+
         const x =
-          (index /
-            (dataArray.length -
-              1 || 1)) *
+          ((timestamp - minTime) /
+            timeRange) *
           800;
 
         const y =
@@ -581,8 +798,154 @@ export default function EcoEnzyme() {
       selectedIndicator
     );
 
-  const chartPointArray =
-    chartPoints.split(' ');
+  // ===================================================================
+  // TICK SUMBU X
+  // ===================================================================
+
+  const chartTicks = useMemo(() => {
+    if (
+      timeSeries.length === 0
+    ) {
+      return [];
+    }
+
+    const timestamps = timeSeries
+      .map((item) =>
+        new Date(item.timestamp).getTime()
+      )
+      .filter(Number.isFinite);
+
+    if (timestamps.length === 0) {
+      return [];
+    }
+
+    const firstTime =
+      Math.min(...timestamps);
+
+    const lastTime =
+      Math.max(...timestamps);
+
+    const durationHours =
+      Math.max(
+        1,
+        (lastTime - firstTime) /
+          (1000 * 60 * 60)
+      );
+
+    let intervalHours;
+
+    if (durationHours <= 12) {
+      intervalHours = 2;
+    } else if (durationHours <= 24) {
+      intervalHours = 4;
+    } else if (durationHours <= 72) {
+      intervalHours = 12;
+    } else {
+      intervalHours = 24;
+    }
+
+    const intervalMs =
+      intervalHours *
+      60 *
+      60 *
+      1000;
+
+    const firstTick =
+      Math.ceil(
+        firstTime / intervalMs
+      ) * intervalMs;
+
+    const ticks = [];
+
+    for (
+      let time = firstTick;
+      time <= lastTime;
+      time += intervalMs
+    ) {
+      const position =
+        ((time - firstTime) /
+          Math.max(
+            1,
+            lastTime - firstTime
+          )) *
+        100;
+
+      ticks.push({
+        position,
+        label: new Date(
+          time
+        ).toLocaleTimeString(
+          'id-ID',
+          {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }
+        ),
+      });
+    }
+
+    if (ticks.length === 0) {
+      ticks.push({
+        position: 0,
+        label: new Date(
+          firstTime
+        ).toLocaleTimeString(
+          'id-ID',
+          {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }
+        ),
+      });
+    }
+
+    const firstLabel =
+      new Date(
+        firstTime
+      ).toLocaleTimeString(
+        'id-ID',
+        {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }
+      );
+
+    const lastLabel =
+      new Date(
+        lastTime
+      ).toLocaleTimeString(
+        'id-ID',
+        {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }
+      );
+
+    if (
+      ticks[0].position > 8
+    ) {
+      ticks.unshift({
+        position: 0,
+        label: firstLabel,
+      });
+    }
+
+    if (
+      ticks[ticks.length - 1]
+        .position < 92
+    ) {
+      ticks.push({
+        position: 100,
+        label: lastLabel,
+      });
+    }
+
+    return ticks;
+  }, [timeSeries]);
 
   // ===================================================================
   // RENDER
@@ -591,10 +954,7 @@ export default function EcoEnzyme() {
   return (
     <div className="flex h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-hidden">
 
-      {/* ============================================================= */}
       {/* MOBILE OVERLAY */}
-      {/* ============================================================= */}
-
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
@@ -617,10 +977,7 @@ export default function EcoEnzyme() {
         )}
       </AnimatePresence>
 
-      {/* ============================================================= */}
       {/* SIDEBAR */}
-      {/* ============================================================= */}
-
       <Sidebar
         isCollapsed={
           isCollapsed
@@ -640,16 +997,10 @@ export default function EcoEnzyme() {
         activeTitle="Eco Enzyme Active"
       />
 
-      {/* ============================================================= */}
       {/* MAIN */}
-      {/* ============================================================= */}
-
       <main className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden relative">
 
-        {/* =========================================================== */}
         {/* HEADER */}
-        {/* =========================================================== */}
-
         <header className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 lg:px-10 z-10 flex-shrink-0">
 
           <div className="flex items-center gap-3 md:gap-4 truncate">
@@ -686,7 +1037,6 @@ export default function EcoEnzyme() {
           <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 flex-shrink-0">
 
             {/* WAKTU TERBARU */}
-
             <div className="hidden lg:flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-2xl border border-gray-100 text-xs font-semibold text-gray-600">
 
               <Clock
@@ -707,7 +1057,6 @@ export default function EcoEnzyme() {
             </div>
 
             {/* NODE */}
-
             <div className="relative">
 
               <select
@@ -734,7 +1083,6 @@ export default function EcoEnzyme() {
             </div>
 
             {/* NOTIFICATION */}
-
             <button
               className="relative w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-600 hover:text-green-700 hover:bg-green-50 transition-colors"
               aria-label="Notifikasi"
@@ -747,10 +1095,7 @@ export default function EcoEnzyme() {
           </div>
         </header>
 
-        {/* =========================================================== */}
         {/* CONTENT */}
-        {/* =========================================================== */}
-
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10">
 
           <motion.div
@@ -762,10 +1107,7 @@ export default function EcoEnzyme() {
             className="max-w-7xl mx-auto space-y-6 sm:space-y-8"
           >
 
-            {/* ======================================================= */}
             {/* FILTER */}
-            {/* ======================================================= */}
-
             <motion.div
               variants={fadeInUp}
               className="bg-white p-4 sm:p-5 rounded-3xl border border-gray-100 shadow-sm"
@@ -788,7 +1130,6 @@ export default function EcoEnzyme() {
                 <div className="flex flex-col sm:flex-row gap-3">
 
                   {/* TANGGAL */}
-
                   <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
 
                     <Calendar
@@ -812,7 +1153,6 @@ export default function EcoEnzyme() {
                   </div>
 
                   {/* PERIODE */}
-
                   <div className="relative">
 
                     <select
@@ -858,10 +1198,7 @@ export default function EcoEnzyme() {
 
             </motion.div>
 
-            {/* ======================================================= */}
             {/* SENSOR CARDS */}
-            {/* ======================================================= */}
-
             <motion.div
               variants={fadeInUp}
               className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4"
@@ -888,6 +1225,11 @@ export default function EcoEnzyme() {
                     temperatureStatus,
                 },
 
+                // =====================================================
+                // GAS ADC
+                // STATUS SEKARANG DIAMBIL DARI BACKEND
+                // =====================================================
+
                 {
                   label: 'Gas (ADC)',
                   value: loading
@@ -901,7 +1243,8 @@ export default function EcoEnzyme() {
                   icon: Wind,
                   color:
                     'text-blue-500',
-                  status: null,
+                  status:
+                    gasStatus,
                 },
 
                 {
@@ -960,6 +1303,11 @@ export default function EcoEnzyme() {
                     tdsStatus,
                 },
 
+                // =====================================================
+                // MQ3
+                // STATUS SEKARANG DIAMBIL DARI BACKEND
+                // =====================================================
+
                 {
                   label:
                     'Alkohol (MQ3)',
@@ -974,7 +1322,8 @@ export default function EcoEnzyme() {
                   icon: Zap,
                   color:
                     'text-amber-500',
-                  status: null,
+                  status:
+                    mq3Status,
                 },
               ].map(
                 (
@@ -1030,9 +1379,7 @@ export default function EcoEnzyme() {
                           </span>
                         ) : (
                           <span className="inline-block mt-1 text-[10px] font-bold text-gray-500 bg-gray-50 px-2 py-0.5 rounded-full">
-                            {apiAvailable
-                              ? 'Data'
-                              : 'Tidak Tersedia'}
+                            Data
                           </span>
                         )}
 
@@ -1045,16 +1392,10 @@ export default function EcoEnzyme() {
 
             </motion.div>
 
-            {/* ======================================================= */}
             {/* GRAFIK + STATUS NODE */}
-            {/* ======================================================= */}
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-              {/* ===================================================== */}
               {/* GRAFIK */}
-              {/* ===================================================== */}
-
               <motion.div
                 variants={fadeInUp}
                 className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between"
@@ -1073,7 +1414,7 @@ export default function EcoEnzyme() {
 
                     <p className="text-xs text-gray-400">
                       {apiAvailable
-                        ? `Data monitoring (${timeSeries.length} titik data)`
+                        ? `Data monitoring (${timeSeries.length.toLocaleString('id-ID')} titik data)`
                         : 'Data belum tersedia'}
                     </p>
 
@@ -1174,63 +1515,34 @@ export default function EcoEnzyme() {
                             currentConfig.color
                           }
                           strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           points={
                             chartPoints
                           }
+                          vectorEffect="non-scaling-stroke"
                         />
-
-                        {chartPointArray.map(
-                          (
-                            point,
-                            index
-                          ) => {
-
-                            if (
-                              !point
-                            ) {
-                              return null;
-                            }
-
-                            const [
-                              cx,
-                              cy,
-                            ] =
-                              point.split(
-                                ','
-                              );
-
-                            return (
-                              <circle
-                                key={
-                                  index
-                                }
-                                cx={cx}
-                                cy={cy}
-                                r="3"
-                                fill="white"
-                                stroke={
-                                  currentConfig.color
-                                }
-                                strokeWidth="2"
-                              />
-                            );
-                          }
-                        )}
 
                       </svg>
                     )}
 
                   </div>
 
-                  <div className="relative z-10 flex justify-between pl-6 sm:pl-8 pr-2 text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pt-2 border-t border-gray-100">
+                  <div className="relative z-10 h-5 ml-6 sm:ml-8 mr-2 border-t border-gray-100 select-none">
 
-                    <span>
-                      Awal Data
-                    </span>
-
-                    <span>
-                      Terbaru
-                    </span>
+                    {chartTicks.map(
+                      (tick, index) => (
+                        <span
+                          key={`${tick.label}-${index}`}
+                          className="absolute top-2 -translate-x-1/2 whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-gray-400"
+                          style={{
+                            left: `${tick.position}%`,
+                          }}
+                        >
+                          {tick.label}
+                        </span>
+                      )
+                    )}
 
                   </div>
 
@@ -1238,10 +1550,7 @@ export default function EcoEnzyme() {
 
               </motion.div>
 
-              {/* ===================================================== */}
               {/* STATUS NODE */}
-              {/* ===================================================== */}
-
               <motion.div
                 variants={fadeInUp}
                 className="bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between"
@@ -1284,7 +1593,9 @@ export default function EcoEnzyme() {
                   <p className="text-xs text-gray-400 mb-4">
                     Total Record:{' '}
                     {apiAvailable
-                      ? totalRows
+                      ? totalRows.toLocaleString(
+                          'id-ID'
+                        )
                       : '-'}
                   </p>
 
@@ -1310,7 +1621,6 @@ export default function EcoEnzyme() {
                 </div>
 
                 {/* NETWORK */}
-
                 <div className="bg-green-50/50 p-4 rounded-2xl border border-green-100 flex items-center justify-between">
 
                   <div>

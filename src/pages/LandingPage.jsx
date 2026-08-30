@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
@@ -12,6 +12,7 @@ import keranjangImage from '../assets/Keranjang.png';
 import kombuchaImage from '../assets/Kombucha.png';
 import ecoEnzymeImage from '../assets/eco-enzyme.png';
 import fruitEnzymeImage from '../assets/fruit-enzyme.png';
+import { fetchBI } from '../services/api';
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 30 },
@@ -63,8 +64,220 @@ function SocialIcon({ type }) {
   );
 }
 
+
+// =====================================================================
+// STATUS NODE REAL-TIME
+// =====================================================================
+
+const NODE_CONFIG = {
+  KOMBUCHA_01: {
+    title: 'Kombucha',
+    path: '/kombucha',
+  },
+  ECO_02: {
+    title: 'Eco Enzyme',
+    path: '/eco-enzyme',
+  },
+  FRUIT_03: {
+    title: 'Fruit Enzyme',
+    path: '/fruit-enzyme',
+  },
+};
+
+const getNodeConnectionStatus = (node) => {
+  // Backend adalah sumber status utama.
+  const backendStatus = String(node?.status || '').toLowerCase();
+
+  if (backendStatus === 'online') {
+    return {
+      label: 'Online',
+      textClass: 'text-green-600',
+      badgeClass: 'bg-green-50 text-green-700',
+      dotClass: 'bg-green-500',
+      pulse: true,
+    };
+  }
+
+  if (backendStatus === 'warning') {
+    return {
+      label: 'Warning',
+      textClass: 'text-yellow-600',
+      badgeClass: 'bg-yellow-50 text-yellow-700',
+      dotClass: 'bg-yellow-500',
+      pulse: false,
+    };
+  }
+
+  if (
+    backendStatus === 'offline' ||
+    backendStatus === 'no_data'
+  ) {
+    return {
+      label:
+        backendStatus === 'no_data'
+          ? 'Belum Ada Data'
+          : 'Offline',
+      textClass:
+        backendStatus === 'no_data'
+          ? 'text-gray-500'
+          : 'text-red-600',
+      badgeClass:
+        backendStatus === 'no_data'
+          ? 'bg-gray-50 text-gray-600'
+          : 'bg-red-50 text-red-700',
+      dotClass:
+        backendStatus === 'no_data'
+          ? 'bg-gray-400'
+          : 'bg-red-500',
+      pulse: false,
+    };
+  }
+
+  // Fallback jika backend lama tidak mengirim field status.
+  const lastSeen =
+    node?.last_seen ??
+    node?.lastSeen ??
+    node?.timestamp ??
+    null;
+
+  if (!lastSeen) {
+    return {
+      label: 'Belum Ada Data',
+      textClass: 'text-gray-500',
+      badgeClass: 'bg-gray-50 text-gray-600',
+      dotClass: 'bg-gray-400',
+      pulse: false,
+    };
+  }
+
+  const lastSeenTime = new Date(lastSeen).getTime();
+
+  if (Number.isNaN(lastSeenTime)) {
+    return {
+      label: 'Belum Ada Data',
+      textClass: 'text-gray-500',
+      badgeClass: 'bg-gray-50 text-gray-600',
+      dotClass: 'bg-gray-400',
+      pulse: false,
+    };
+  }
+
+  const ageSeconds = Math.max(
+    (Date.now() - lastSeenTime) / 1000,
+    0
+  );
+
+  // Semua node sekarang mengirim data sekitar setiap 30 detik.
+  if (ageSeconds <= 90) {
+    return {
+      label: 'Online',
+      textClass: 'text-green-600',
+      badgeClass: 'bg-green-50 text-green-700',
+      dotClass: 'bg-green-500',
+      pulse: true,
+    };
+  }
+
+  if (ageSeconds <= 180) {
+    return {
+      label: 'Warning',
+      textClass: 'text-yellow-600',
+      badgeClass: 'bg-yellow-50 text-yellow-700',
+      dotClass: 'bg-yellow-500',
+      pulse: false,
+    };
+  }
+
+  return {
+    label: 'Offline',
+    textClass: 'text-red-600',
+    badgeClass: 'bg-red-50 text-red-700',
+    dotClass: 'bg-red-500',
+    pulse: false,
+  };
+};
+
 export default function LandingPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const [nodeStatus, setNodeStatus] = useState({
+    KOMBUCHA_01: null,
+    ECO_02: null,
+    FRUIT_03: null,
+  });
+
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  const POLLING_INTERVAL =
+    Number(import.meta.env.VITE_POLLING_INTERVAL) || 10000;
+
+  // Ambil status setiap node dari backend secara realtime.
+  // Backend /bi sudah menyediakan node_status per node.
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadNodeStatus = async () => {
+      try {
+        const result = await fetchBI();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const backendNodeStatus =
+          result?.node_status || {};
+
+        setNodeStatus({
+          KOMBUCHA_01:
+            backendNodeStatus.KOMBUCHA_01 || null,
+          ECO_02:
+            backendNodeStatus.ECO_02 || null,
+          FRUIT_03:
+            backendNodeStatus.FRUIT_03 || null,
+        });
+
+      } catch (error) {
+        console.error(
+          '[LANDING] Gagal mengambil status node:',
+          error
+        );
+
+        if (isMounted) {
+          setNodeStatus({
+            KOMBUCHA_01: null,
+            ECO_02: null,
+            FRUIT_03: null,
+          });
+        }
+      } finally {
+        if (isMounted) {
+          setStatusLoading(false);
+        }
+      }
+    };
+
+    loadNodeStatus();
+
+    const intervalId = setInterval(
+      loadNodeStatus,
+      POLLING_INTERVAL
+    );
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [POLLING_INTERVAL]);
+
+  const getStatusForNode = (nodeId) =>
+    getNodeConnectionStatus(nodeStatus[nodeId]);
+
+  const onlineCount = Object.keys(NODE_CONFIG).filter(
+    (nodeId) =>
+      getStatusForNode(nodeId).label === 'Online'
+  ).length;
+
+  const allOnline = onlineCount === 3;
 
   return (
     <div className="min-h-screen bg-[#fcfcfb] font-sans text-gray-800 overflow-x-hidden">
@@ -183,21 +396,53 @@ export default function LandingPage() {
             className="absolute -top-2 left-2 sm:left-0 lg:-left-6 bg-white/95 backdrop-blur-md p-4 sm:p-5 rounded-3xl shadow-xl border border-white/50 w-52 sm:w-64 z-20 cursor-grab active:cursor-grabbing select-none"
           >
             <div className="flex items-center gap-3 mb-3 border-b border-gray-100 pb-2.5">
-              <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
+              <div
+                className={`w-2.5 h-2.5 rounded-full ${
+                  allOnline
+                    ? 'bg-green-500 animate-pulse'
+                    : 'bg-yellow-500'
+                }`}
+              ></div>
               <div>
-                <h4 className="font-bold text-xs sm:text-sm text-gray-900">Sistem Aktif</h4>
-                <p className="text-[9px] sm:text-[10px] text-gray-500">Semua Sistem Online</p>
+                <h4 className="font-bold text-xs sm:text-sm text-gray-900">
+                  Sistem Aktif
+                </h4>
+                <p className="text-[9px] sm:text-[10px] text-gray-500">
+                  {statusLoading
+                    ? 'Memeriksa status node...'
+                    : `${onlineCount} dari 3 node online`}
+                </p>
               </div>
             </div>
+
             <div className="space-y-2 text-[11px] sm:text-xs font-semibold mb-3">
-              {["Kombucha", "Eco Enzyme", "Fruit Enzyme"].map((name) => (
-                <div key={name} className="flex justify-between items-center">
-                  <span className="text-gray-700">{name}</span>
-                  <span className="text-green-600 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online
-                  </span>
-                </div>
-              ))}
+              {Object.entries(NODE_CONFIG).map(
+                ([nodeId, config]) => {
+                  const status = getStatusForNode(nodeId);
+
+                  return (
+                    <div
+                      key={nodeId}
+                      className="flex justify-between items-center"
+                    >
+                      <span className="text-gray-700">
+                        {config.title}
+                      </span>
+
+                      <span
+                        className={`${status.textClass} flex items-center gap-1.5`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${status.dotClass} ${
+                            status.pulse ? 'animate-pulse' : ''
+                          }`}
+                        />
+                        {status.label}
+                      </span>
+                    </div>
+                  );
+                }
+              )}
             </div>
             <Link 
               to="/dashboard" 
@@ -239,10 +484,13 @@ export default function LandingPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 text-left">
           {[
-            { title: "Kombucha", path: "/kombucha", desc: "Pantau fermentasi kombucha secara real-time untuk hasil terbaik setiap saat.", icon: Droplet },
-            { title: "Eco Enzyme", path: "/eco-enzyme", desc: "Pantau fermentasi eco enzyme secara real-time untuk kualitas optimal.", icon: Recycle },
-            { title: "Fruit Enzyme", path: "/fruit-enzyme", desc: "Pantau fermentasi fruit enzyme secara real-time untuk hasil terbaik setiap saat.", icon: Apple }
+            { nodeId: "KOMBUCHA_01", title: "Kombucha", path: "/kombucha", desc: "Pantau fermentasi kombucha secara real-time untuk hasil terbaik setiap saat.", icon: Droplet },
+            { nodeId: "ECO_02", title: "Eco Enzyme", path: "/eco-enzyme", desc: "Pantau fermentasi eco enzyme secara real-time untuk kualitas optimal.", icon: Recycle },
+            { nodeId: "FRUIT_03", title: "Fruit Enzyme", path: "/fruit-enzyme", desc: "Pantau fermentasi fruit enzyme secara real-time untuk hasil terbaik setiap saat.", icon: Apple }
           ].map((item, index) => (
+            (() => {
+              const status = getStatusForNode(item.nodeId);
+              return (
             <motion.div
               key={index}
               variants={fadeInUp}
@@ -274,8 +522,15 @@ export default function LandingPage() {
               <div>
                 <div className="flex justify-between items-center mb-5 text-xs sm:text-sm border-t border-gray-100 pt-4">
                   <span className="text-gray-500 font-medium">Status Sistem</span>
-                  <span className="bg-green-50 text-green-700 px-3 py-1 rounded-full font-bold text-[11px] flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>Online
+                  <span
+                    className={`${status.badgeClass} px-3 py-1 rounded-full font-bold text-[11px] flex items-center gap-1.5`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${status.dotClass} ${
+                        status.pulse ? 'animate-pulse' : ''
+                      }`}
+                    />
+                    {status.label}
                   </span>
                 </div>
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
@@ -288,6 +543,8 @@ export default function LandingPage() {
                 </motion.div>
               </div>
             </motion.div>
+              );
+            })()
           ))}
         </div>
       </motion.section>

@@ -110,47 +110,96 @@ const INDICATOR_MAP = {
 // =====================================================================
 
 // Jumlah record berdasarkan periode.
-// Sensor mengirim data setiap 30 detik.
+// Sensor mengirim 1 data setiap 30 detik.
+// 12 jam = 1.440 record
+// 24 jam = 2.880 record
+// 3 hari = 8.640 record
+// 7 hari = 20.160 record.
 const getRecordLimit = (timeRange) => {
   switch (timeRange) {
     case '12 Jam':
       return 1440;
+
     case '24 Jam':
       return 2880;
+
     case '3 Hari':
       return 8640;
+
     case '7 Hari':
       return 20160;
+
     default:
       return 2880;
   }
 };
 
-const getDateRange = (selectedDate, selectedTimeRange) => {
-  const start = new Date(`${selectedDate}T00:00:00`);
-  let end;
-
-  switch (selectedTimeRange) {
-    case '7 Hari':
-      end = new Date(start);
-      end.setDate(end.getDate() + 7);
-      break;
-
-    case '3 Hari':
-      end = new Date(start);
-      end.setDate(end.getDate() + 3);
-      break;
-
+const getDurationMs = (timeRange) => {
+  switch (timeRange) {
     case '12 Jam':
-      end = new Date(start);
-      end.setHours(end.getHours() + 12);
-      break;
+      return 12 * 60 * 60 * 1000;
 
     case '24 Jam':
+      return 24 * 60 * 60 * 1000;
+
+    case '3 Hari':
+      return 3 * 24 * 60 * 60 * 1000;
+
+    case '7 Hari':
+      return 7 * 24 * 60 * 60 * 1000;
+
     default:
-      end = new Date(start);
-      end.setDate(end.getDate() + 1);
-      break;
+      return 24 * 60 * 60 * 1000;
+  }
+};
+
+const getDateRange = (
+  selectedDate,
+  selectedTimeRange
+) => {
+  const selectedDay =
+    new Date(`${selectedDate}T00:00:00`);
+
+  const now = new Date();
+
+  const isToday =
+    selectedDay.getFullYear() ===
+      now.getFullYear() &&
+    selectedDay.getMonth() ===
+      now.getMonth() &&
+    selectedDay.getDate() ===
+      now.getDate();
+
+  const durationMs =
+    getDurationMs(selectedTimeRange);
+
+  let end;
+  let start;
+
+  /*
+   * Jika memilih hari ini, grafik bergerak secara rolling
+   * sampai waktu sekarang.
+   *
+   * Contoh:
+   * sekarang 13:00 + pilihan 24 Jam
+   * => 01:00 sampai 13:00
+   *
+   * Jika memilih tanggal lampau, periode dimulai dari
+   * 00:00 pada tanggal tersebut.
+   */
+
+  if (isToday) {
+    end = now;
+
+    start = new Date(
+      now.getTime() - durationMs
+    );
+  } else {
+    start = selectedDay;
+
+    end = new Date(
+      selectedDay.getTime() + durationMs
+    );
   }
 
   return {
@@ -159,7 +208,135 @@ const getDateRange = (selectedDate, selectedTimeRange) => {
   };
 };
 
-const formatValue = (value, decimals = 2) => {
+const formatChartTime = (
+  date,
+  timeRange
+) => {
+  const d = new Date(date);
+
+  if (!Number.isFinite(d.getTime())) {
+    return '--:--';
+  }
+
+  if (
+    timeRange === '3 Hari' ||
+    timeRange === '7 Hari'
+  ) {
+    return d.toLocaleDateString(
+      'id-ID',
+      {
+        day: '2-digit',
+        month: '2-digit',
+      }
+    );
+  }
+
+  return d.toLocaleTimeString(
+    'id-ID',
+    {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }
+  );
+};
+
+const getChartTimeLabels = (
+  start,
+  end,
+  timeRange
+) => {
+  const startTime =
+    new Date(start).getTime();
+
+  const endTime =
+    new Date(end).getTime();
+
+  if (
+    !Number.isFinite(startTime) ||
+    !Number.isFinite(endTime) ||
+    endTime <= startTime
+  ) {
+    return [];
+  }
+
+  /*
+   * Label sumbu X dibuat dari waktu yang sama dengan
+   * rentang data grafik, bukan dari jumlah/index record.
+   *
+   * 12 Jam -> setiap 2 jam
+   * 24 Jam -> setiap 4 jam
+   * 3 Hari -> setiap 12 jam
+   * 7 Hari -> setiap 24 jam
+   *
+   * Titik terakhir selalu ditambahkan agar waktu sekarang
+   * tetap tampil di ujung kanan grafik.
+   */
+
+  const intervalMap = {
+    '12 Jam':
+      2 * 60 * 60 * 1000,
+
+    '24 Jam':
+      4 * 60 * 60 * 1000,
+
+    '3 Hari':
+      12 * 60 * 60 * 1000,
+
+    '7 Hari':
+      24 * 60 * 60 * 1000,
+  };
+
+  const interval =
+    intervalMap[timeRange] ||
+    4 * 60 * 60 * 1000;
+
+  const timestamps = [];
+
+  let cursor = startTime;
+
+  while (cursor < endTime) {
+    timestamps.push(cursor);
+
+    cursor += interval;
+  }
+
+  timestamps.push(endTime);
+
+  return timestamps.map(
+    (timestamp) =>
+      formatChartTime(
+        new Date(timestamp),
+        timeRange
+      )
+  );
+};
+
+const getChartRangeLabel = (
+  timeRange
+) => {
+  switch (timeRange) {
+    case '12 Jam':
+      return '12 Jam Terakhir';
+
+    case '24 Jam':
+      return '24 Jam Terakhir';
+
+    case '3 Hari':
+      return '3 Hari Terakhir';
+
+    case '7 Hari':
+      return '7 Hari Terakhir';
+
+    default:
+      return '24 Jam Terakhir';
+  }
+};
+
+const formatValue = (
+  value,
+  decimals = 2
+) => {
   if (
     value === null ||
     value === undefined ||
@@ -168,46 +345,104 @@ const formatValue = (value, decimals = 2) => {
     return '-';
   }
 
-  const numericValue = Number(value);
+  const numericValue =
+    Number(value);
 
-  if (!Number.isFinite(numericValue)) {
+  if (
+    !Number.isFinite(
+      numericValue
+    )
+  ) {
     return '-';
   }
 
-  return numericValue.toFixed(decimals);
+  return numericValue.toFixed(
+    decimals
+  );
+};
+
+const normalizeStatus = (status) => {
+  if (status && typeof status === 'object') {
+    return (
+      status.status ??
+      status.state ??
+      status.sensor_status ??
+      status.value ??
+      null
+    );
+  }
+  return status;
 };
 
 const formatStatus = (status) => {
-  switch (status) {
+  const value = String(normalizeStatus(status) ?? '')
+    .trim()
+    .toLowerCase();
+
+  switch (value) {
     case 'normal':
       return {
         label: 'Normal',
         className: 'bg-green-50 text-green-700',
         dotClassName: 'bg-green-500',
       };
-
     case 'warning':
       return {
         label: 'Warning',
         className: 'bg-yellow-50 text-yellow-700',
         dotClassName: 'bg-yellow-500',
       };
-
     case 'critical':
       return {
         label: 'Critical',
         className: 'bg-red-50 text-red-700',
         dotClassName: 'bg-red-500',
       };
-
+    case 'offline':
+    case 'disconnected':
+      return {
+        label: 'Offline',
+        className: 'bg-red-50 text-red-700',
+        dotClassName: 'bg-red-500',
+      };
+    case 'online':
+    case 'connected':
+    case 'active':
+      return {
+        label: 'Online',
+        className: 'bg-green-50 text-green-700',
+        dotClassName: 'bg-green-500',
+      };
     case 'no_data':
-    default:
+    case 'nodata':
+    case 'no data':
+    case 'tidak ada data':
       return {
         label: 'Tidak Ada Data',
         className: 'bg-gray-50 text-gray-600',
         dotClassName: 'bg-gray-400',
       };
+    default:
+      return {
+        label: 'Data',
+        className: 'bg-gray-50 text-gray-600',
+        dotClassName: 'bg-gray-400',
+      };
   }
+};
+
+const getSensorBackendStatus = (sensorStatus, ...keys) => {
+  if (!sensorStatus || typeof sensorStatus !== 'object') {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (sensorStatus[key] !== undefined && sensorStatus[key] !== null) {
+      return sensorStatus[key];
+    }
+  }
+
+  return null;
 };
 
 // =====================================================================
@@ -215,46 +450,80 @@ const formatStatus = (status) => {
 // =====================================================================
 
 export default function Kombucha() {
-  const location = useLocation();
-  const currentPath = location.pathname;
+  const location =
+    useLocation();
 
-  const [isMobileMenuOpen, setIsMobileMenuOpen] =
-    useState(false);
+  const currentPath =
+    location.pathname;
 
-  const [isCollapsed, setIsCollapsed] =
-    useState(false);
+  const [
+    isMobileMenuOpen,
+    setIsMobileMenuOpen
+  ] = useState(false);
 
-  const [selectedNode, setSelectedNode] =
-    useState('KOMBUCHA_01');
+  const [
+    isCollapsed,
+    setIsCollapsed
+  ] = useState(false);
 
-  const [selectedIndicator, setSelectedIndicator] =
-    useState('temperature_c');
+  const [
+    selectedNode,
+    setSelectedNode
+  ] = useState(
+    'KOMBUCHA_01'
+  );
 
-  const [selectedTimeRange, setSelectedTimeRange] =
-    useState('24 Jam');
+  const [
+    selectedIndicator,
+    setSelectedIndicator
+  ] = useState(
+    'temperature_c'
+  );
 
-  const [selectedDate, setSelectedDate] =
-    useState(() => {
-      const today = new Date();
+  const [
+    selectedTimeRange,
+    setSelectedTimeRange
+  ] = useState(
+    '24 Jam'
+  );
 
-      return today
-        .toLocaleDateString('en-CA');
-    });
+  const [
+    selectedDate,
+    setSelectedDate
+  ] = useState(() => {
+    const today =
+      new Date();
 
-  const [biData, setBiData] = useState(null);
+    return today.toLocaleDateString(
+      'en-CA'
+    );
+  });
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    biData,
+    setBiData
+  ] = useState(null);
 
-  const [error, setError] =
-    useState(null);
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
 
-  const [apiAvailable, setApiAvailable] =
-    useState(true);
+  const [
+    error,
+    setError
+  ] = useState(null);
+
+  const [
+    apiAvailable,
+    setApiAvailable
+  ] = useState(true);
 
   const POLLING_INTERVAL =
-    Number(import.meta.env.VITE_POLLING_INTERVAL) ||
-    10000;
+    Number(
+      import.meta.env
+        .VITE_POLLING_INTERVAL
+    ) || 10000;
 
   // ===================================================================
   // MOBILE MENU
@@ -268,22 +537,27 @@ export default function Kombucha() {
   // FILTER TANGGAL
   // ===================================================================
 
-  const dateRange = useMemo(
-    () =>
-      getDateRange(
+  const dateRange =
+    useMemo(
+      () =>
+        getDateRange(
+          selectedDate,
+          selectedTimeRange
+        ),
+      [
         selectedDate,
-        selectedTimeRange
-      ),
-    [
-      selectedDate,
-      selectedTimeRange,
-    ]
-  );
+        selectedTimeRange,
+      ]
+    );
 
-  const recordLimit = useMemo(
-    () => getRecordLimit(selectedTimeRange),
-    [selectedTimeRange]
-  );
+  const recordLimit =
+    useMemo(
+      () =>
+        getRecordLimit(
+          selectedTimeRange
+        ),
+      [selectedTimeRange]
+    );
 
   // ===================================================================
   // LOAD DATA BI
@@ -292,54 +566,75 @@ export default function Kombucha() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadData = async () => {
-      try {
-        const result = await fetchBI({
-          node_id: selectedNode,
-          start: dateRange.start,
-          end: dateRange.end,
-          limit: recordLimit,
-        });
+    const loadData =
+      async () => {
+        try {
+          const result =
+            await fetchBI({
+              node_id:
+                selectedNode,
 
-        if (!isMounted) {
-          return;
-        }
+              start:
+                dateRange.start,
 
-        setBiData(result);
-        setApiAvailable(true);
-        setError(null);
-      } catch (err) {
-        console.error(
-          '[KOMBUCHA] Gagal memuat data:',
-          err
-        );
+              end:
+                dateRange.end,
 
-        if (isMounted) {
-          setApiAvailable(false);
-          setBiData(null);
+              limit:
+                recordLimit,
+            });
 
-          setError(
-            'Backend tidak dapat diakses. Data sensor belum tersedia.'
+          if (!isMounted) {
+            return;
+          }
+
+          setBiData(result);
+
+          setApiAvailable(
+            true
           );
+
+          setError(null);
+        } catch (err) {
+          console.error(
+            '[KOMBUCHA] Gagal memuat data:',
+            err
+          );
+
+          if (isMounted) {
+            setApiAvailable(
+              false
+            );
+
+            setBiData(null);
+
+            setError(
+              'Backend tidak dapat diakses. Data sensor belum tersedia.'
+            );
+          }
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+          }
         }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
+      };
 
     setLoading(true);
+
     loadData();
 
-    const intervalId = setInterval(
-      loadData,
-      POLLING_INTERVAL
-    );
+    const intervalId =
+      setInterval(
+        loadData,
+        POLLING_INTERVAL
+      );
 
     return () => {
       isMounted = false;
-      clearInterval(intervalId);
+
+      clearInterval(
+        intervalId
+      );
     };
   }, [
     selectedNode,
@@ -353,138 +648,334 @@ export default function Kombucha() {
   // DATA DARI BACKEND
   // ===================================================================
 
-  const latest = biData?.latest || null;
+  const latest =
+    biData?.latest ||
+    null;
 
-  const rawData = Array.isArray(
-    biData?.raw_data?.data
-  )
-    ? biData.raw_data.data
-    : [];
+  const rawData =
+    Array.isArray(
+      biData?.raw_data?.data
+    )
+      ? biData.raw_data.data
+      : [];
 
-  const timeSeries = useMemo(() => {
-    return [...rawData].sort(
-      (a, b) =>
-        new Date(a.timestamp) -
-        new Date(b.timestamp)
-    );
-  }, [rawData]);
+  const timeSeries =
+    useMemo(() => {
+      const now = Date.now();
 
-  const totalRows = useMemo(() => {
-    const backendCount = Number(
-      biData?.overview?.total_readings
-    );
+      return [...rawData]
+        .filter((row) => {
+          const timestamp =
+            new Date(row?.timestamp).getTime();
 
-    if (
-      Number.isFinite(backendCount) &&
-      backendCount >= 0
-    ) {
-      return backendCount;
-    }
+          return (
+            Number.isFinite(timestamp) &&
+            timestamp <= now
+          );
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp) -
+            new Date(b.timestamp)
+        );
+    }, [rawData]);
 
-    return timeSeries.length;
-  }, [biData, timeSeries]);
+  /*
+   * WAKTU MULAI SESI SENSING
+   *
+   * Sequence setiap node sudah di-reset ke 1 ketika
+   * pengambilan data resmi dimulai. Karena itu sequence=1
+   * menjadi penanda paling aman untuk menentukan awal sesi,
+   * bukan jumlah record dan bukan awal window 24 jam.
+   *
+   * Contoh:
+   * data dashboard diambil untuk 24 jam terakhir mulai 13:48,
+   * tetapi sequence=1 masuk sekitar 19:00.
+   * Maka grafik dimulai dari sekitar 19:00.
+   */
+
+  const sessionStartTime =
+    useMemo(() => {
+      const firstSequence =
+        timeSeries
+          .filter(
+            (row) =>
+              Number(
+                row?.sequence
+              ) === 1 &&
+              row?.timestamp
+          )
+          .sort(
+            (a, b) =>
+              new Date(
+                a.timestamp
+              ) -
+              new Date(
+                b.timestamp
+              )
+          )[0];
+
+      if (
+        firstSequence?.timestamp
+      ) {
+        return new Date(
+          firstSequence.timestamp
+        ).getTime();
+      }
+
+      /*
+       * Fallback jika sequence=1 tidak ikut terambil.
+       * Gunakan timestamp paling awal dari data yang tersedia.
+       */
+
+      const firstTimestamp =
+        timeSeries[0]
+          ?.timestamp;
+
+      const fallback =
+        firstTimestamp
+          ? new Date(
+              firstTimestamp
+            ).getTime()
+          : NaN;
+
+      return Number.isFinite(
+        fallback
+      )
+        ? fallback
+        : null;
+    }, [timeSeries]);
+
+  /*
+   * Awal grafik adalah waktu mulai sesi sensing,
+   * tetapi tidak boleh keluar dari periode filter.
+   */
+
+  const chartStartTime =
+    useMemo(() => {
+      const filterStart =
+        new Date(
+          dateRange.start
+        ).getTime();
+
+      if (
+        !Number.isFinite(
+          filterStart
+        )
+      ) {
+        return null;
+      }
+
+      if (
+        Number.isFinite(
+          sessionStartTime
+        )
+      ) {
+        return Math.max(
+          filterStart,
+          sessionStartTime
+        );
+      }
+
+      return filterStart;
+    }, [
+      dateRange.start,
+      sessionStartTime,
+    ]);
+
+  /*
+   * Hanya data setelah awal sesi yang ditampilkan.
+   * Data percobaan sebelum sequence=1 tidak ikut
+   * membentuk grafik resmi.
+   */
+
+  const chartTimeSeries =
+    useMemo(() => {
+      if (
+        !Number.isFinite(
+          chartStartTime
+        )
+      ) {
+        return timeSeries;
+      }
+
+      const nowTime =
+        Date.now();
+
+      return timeSeries.filter(
+        (row) => {
+          const timestamp =
+            new Date(
+              row.timestamp
+            ).getTime();
+
+          return (
+            Number.isFinite(
+              timestamp
+            ) &&
+            timestamp >=
+              chartStartTime &&
+            timestamp <=
+              nowTime
+          );
+        }
+      );
+    }, [
+      timeSeries,
+      chartStartTime,
+    ]);
+
+  // Jumlah record yang benar-benar diterima dashboard
+  // untuk node + tanggal + periode yang sedang dipilih.
+
+  const totalRows =
+    timeSeries.length;
 
   const sensorStatus =
-    biData?.sensor_status || {};
+    biData?.sensor_status ||
+    {};
 
   const networkStatus =
-    biData?.network_status || {};
+    biData?.network_status ||
+    {};
 
   // ===================================================================
   // STATUS SENSOR
   // ===================================================================
 
-  const temperatureStatus = formatStatus(
-    sensorStatus.temperature
-  );
+  const temperatureStatus =
+    formatStatus(
+      sensorStatus.temperature
+    );
 
-  const phStatus = formatStatus(
-    sensorStatus.ph
-  );
+  const phStatus =
+    formatStatus(
+      sensorStatus.ph
+    );
 
-  const pressureStatus = formatStatus(
-    sensorStatus.pressure
-  );
+  const pressureStatus =
+    formatStatus(
+      sensorStatus.pressure
+    );
 
-  const tdsStatus = formatStatus(
-    sensorStatus.tds
-  );
+  const tdsStatus =
+    formatStatus(
+      sensorStatus.tds
+    );
+
+  // Status Gas dan Alkohol/MQ3 diambil langsung dari backend.
+  const gasStatus =
+    formatStatus(
+      getSensorBackendStatus(
+        sensorStatus,
+        'gas_adc',
+        'gas'
+      )
+    );
+
+  const mq3Status =
+    formatStatus(
+      getSensorBackendStatus(
+        sensorStatus,
+        'mq3_adc',
+        'mq3',
+        'alcohol',
+        'alkohol'
+      )
+    );
 
   // ===================================================================
   // STATUS NODE
   // ===================================================================
+  // Status koneksi node diambil LANGSUNG dari backend.
+  //
+  // Backend:
+  // biData.node_status[selectedNode]
+  //
+  // Status yang didukung:
+  // online   -> Online
+  // warning  -> Warning
+  // offline  -> Offline
+  // no_data  -> Tidak Ada Data
+  //
+  // Frontend TIDAK lagi menghitung status menggunakan timestamp,
+  // Date.now(), atau batas waktu sendiri.
+  // =====================================================================
 
-  const lastSeen =
-    latest?.timestamp ||
-    biData?.overview?.last_reading ||
-    null;
+  const backendNodeStatus =
+    biData?.node_status?.[
+      selectedNode
+    ] || null;
 
-  const getNodeConnectionStatus = () => {
-    if (!apiAvailable) {
-      return {
-        label: 'Tidak Tersedia',
-        className:
-          'bg-gray-50 text-gray-600',
-        dotClassName:
-          'bg-gray-400',
-      };
-    }
+  const getNodeConnectionStatus =
+    () => {
+      if (!apiAvailable) {
+        return {
+          label:
+            'Tidak Tersedia',
 
-    if (!lastSeen) {
-      return {
-        label: 'Tidak Ada Data',
-        className:
-          'bg-gray-50 text-gray-600',
-        dotClassName:
-          'bg-gray-400',
-      };
-    }
+          className:
+            'bg-gray-50 text-gray-600',
 
-    const lastSeenTime =
-      new Date(lastSeen).getTime();
+          dotClassName:
+            'bg-gray-400',
+        };
+      }
 
-    if (Number.isNaN(lastSeenTime)) {
-      return {
-        label: 'Tidak Ada Data',
-        className:
-          'bg-gray-50 text-gray-600',
-        dotClassName:
-          'bg-gray-400',
-      };
-    }
+      const status =
+        String(
+          backendNodeStatus?.status ||
+            'no_data'
+        ).toLowerCase();
 
-    const ageSeconds =
-      (Date.now() - lastSeenTime) /
-      1000;
+      switch (status) {
+        case 'online':
+          return {
+            label: 'Online',
 
-    if (ageSeconds <= 60) {
-      return {
-        label: 'Online',
-        className:
-          'bg-green-50 text-green-700',
-        dotClassName:
-          'bg-green-500',
-      };
-    }
+            className:
+              'bg-green-50 text-green-700',
 
-    if (ageSeconds <= 180) {
-      return {
-        label: 'Warning',
-        className:
-          'bg-yellow-50 text-yellow-700',
-        dotClassName:
-          'bg-yellow-500',
-      };
-    }
+            dotClassName:
+              'bg-green-500',
+          };
 
-    return {
-      label: 'Offline',
-      className:
-        'bg-red-50 text-red-700',
-      dotClassName:
-        'bg-red-500',
+        case 'warning':
+          return {
+            label: 'Warning',
+
+            className:
+              'bg-yellow-50 text-yellow-700',
+
+            dotClassName:
+              'bg-yellow-500',
+          };
+
+        case 'offline':
+          return {
+            label: 'Offline',
+
+            className:
+              'bg-red-50 text-red-700',
+
+            dotClassName:
+              'bg-red-500',
+          };
+
+        case 'no_data':
+        default:
+          return {
+            label:
+              'Tidak Ada Data',
+
+            className:
+              'bg-gray-50 text-gray-600',
+
+            dotClassName:
+              'bg-gray-400',
+          };
+      }
     };
-  };
 
   const nodeStatus =
     getNodeConnectionStatus();
@@ -494,7 +985,9 @@ export default function Kombucha() {
   // ===================================================================
 
   const currentConfig =
-    INDICATOR_MAP[selectedIndicator] ||
+    INDICATOR_MAP[
+      selectedIndicator
+    ] ||
     INDICATOR_MAP.temperature_c;
 
   // ===================================================================
@@ -503,7 +996,9 @@ export default function Kombucha() {
 
   const generateSvgPoints = (
     dataArray,
-    field
+    field,
+    rangeStart,
+    rangeEnd
   ) => {
     if (
       !dataArray ||
@@ -512,13 +1007,20 @@ export default function Kombucha() {
       return '0,50 800,50';
     }
 
-    const values = dataArray
-      .map((item) =>
-        Number(item[field])
-      )
-      .filter(Number.isFinite);
+    const values =
+      dataArray
+        .map((item) =>
+          Number(
+            item[field]
+          )
+        )
+        .filter(
+          Number.isFinite
+        );
 
-    if (values.length === 0) {
+    if (
+      values.length === 0
+    ) {
       return '0,50 800,50';
     }
 
@@ -533,42 +1035,249 @@ export default function Kombucha() {
         ? 1
         : maxVal - minVal;
 
+    const startMs =
+      new Date(
+        rangeStart
+      ).getTime();
+
+    const endMs =
+      new Date(
+        rangeEnd
+      ).getTime();
+
+    const duration =
+      endMs - startMs;
+
     return dataArray
-      .map((item, index) => {
-        const value =
-          Number(item[field]);
+      .map(
+        (
+          item,
+          index
+        ) => {
+          const value =
+            Number(
+              item[field]
+            );
 
-        if (!Number.isFinite(value)) {
-          return null;
+          if (
+            !Number.isFinite(
+              value
+            )
+          ) {
+            return null;
+          }
+
+          const timestampMs =
+            new Date(
+              item.timestamp
+            ).getTime();
+
+          /*
+           * Posisi X mengikuti timestamp asli.
+           * Jadi jika ada data yang hilang/terlambat,
+           * jarak pada grafik tetap mencerminkan waktu sebenarnya.
+           */
+
+          let x;
+
+          if (
+            Number.isFinite(
+              timestampMs
+            ) &&
+            Number.isFinite(
+              startMs
+            ) &&
+            Number.isFinite(
+              endMs
+            ) &&
+            duration > 0
+          ) {
+            x =
+              ((timestampMs -
+                startMs) /
+                duration) *
+              800;
+
+            x = Math.max(
+              0,
+              Math.min(
+                800,
+                x
+              )
+            );
+          } else {
+            /*
+             * Fallback jika timestamp record tidak valid.
+             */
+
+            x =
+              (index /
+                (dataArray.length -
+                  1 ||
+                  1)) *
+              800;
+          }
+
+          const y =
+            100 -
+            ((value -
+              minVal) /
+              range) *
+              80 -
+            10;
+
+          return `${x.toFixed(
+            1
+          )},${y.toFixed(1)}`;
         }
-
-        const x =
-          (index /
-            (dataArray.length - 1 || 1)) *
-          800;
-
-        const y =
-          100 -
-          ((value - minVal) / range) *
-            80 -
-          10;
-
-        return `${x.toFixed(
-          1
-        )},${y.toFixed(1)}`;
-      })
+      )
       .filter(Boolean)
       .join(' ');
   };
 
+  /*
+   * Sumbu X grafik mengikuti:
+   *   chartStartTime -> dateRange.end
+   *
+   * Jadi untuk sesi resmi yang dimulai sekitar 19:00,
+   * grafik tidak lagi diawali dari 13:00 hanya karena
+   * filter 24 jam dimulai 24 jam sebelumnya.
+   */
+
+  const chartStartIso =
+    useMemo(() => {
+      if (
+        !Number.isFinite(
+          chartStartTime
+        )
+      ) {
+        return dateRange.start;
+      }
+
+      return new Date(
+        chartStartTime
+      ).toISOString();
+    }, [
+      chartStartTime,
+      dateRange.start,
+    ]);
+
+  /*
+   * AKHIR GRAFIK HARUS MENGIKUTI DATA TERAKHIR YANG
+   * BENAR-BENAR DITERIMA, bukan waktu komputer semata.
+   *
+   * Ini mencegah garis terlihat "melewati" waktu sekarang
+   * ketika timestamp data terakhir berbeda beberapa menit/detik
+   * dari jam browser.
+   *
+   * Untuk data hari ini:
+   *   chartEnd = timestamp data terakhir
+   *   (tidak boleh lebih besar dari waktu sekarang).
+   *
+   * Untuk tanggal lampau:
+   *   chartEnd tetap mengikuti batas periode yang dipilih,
+   *   tetapi dibatasi sampai data terakhir yang tersedia.
+   */
+
+  const chartEndTime =
+    useMemo(() => {
+      const filterEnd =
+        new Date(
+          dateRange.end
+        ).getTime();
+
+      const validTimestamps =
+        chartTimeSeries
+          .map((row) =>
+            new Date(
+              row?.timestamp
+            ).getTime()
+          )
+          .filter(
+            (timestamp) =>
+              Number.isFinite(
+                timestamp
+              )
+          );
+
+      if (
+        !Number.isFinite(
+          filterEnd
+        )
+      ) {
+        return null;
+      }
+
+      if (
+        validTimestamps.length ===
+        0
+      ) {
+        return filterEnd;
+      }
+
+      const latestDataTime =
+        Math.max(
+          ...validTimestamps
+        );
+
+      /*
+       * Jangan pernah membuat sumbu X berakhir
+       * setelah waktu sekarang.
+       */
+
+      const nowTime =
+        Date.now();
+
+      return Math.min(
+        filterEnd,
+        latestDataTime,
+        nowTime
+      );
+    }, [
+      chartTimeSeries,
+      dateRange.end,
+    ]);
+
+  const chartEndIso =
+    useMemo(() => {
+      if (
+        !Number.isFinite(
+          chartEndTime
+        )
+      ) {
+        return dateRange.end;
+      }
+
+      return new Date(
+        chartEndTime
+      ).toISOString();
+    }, [
+      chartEndTime,
+      dateRange.end,
+    ]);
+
   const chartPoints =
     generateSvgPoints(
-      timeSeries,
-      selectedIndicator
+      chartTimeSeries,
+      selectedIndicator,
+      chartStartIso,
+      chartEndIso
     );
 
-  const chartPointArray =
-    chartPoints.split(' ');
+  const chartTimeLabels =
+    useMemo(
+      () =>
+        getChartTimeLabels(
+          chartStartIso,
+          chartEndIso,
+          selectedTimeRange
+        ),
+      [
+        chartStartIso,
+        chartEndIso,
+        selectedTimeRange,
+      ]
+    );
 
   // ===================================================================
   // DATA TERBARU
@@ -609,11 +1318,19 @@ export default function Kombucha() {
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{
+              opacity: 0,
+            }}
+            animate={{
+              opacity: 1,
+            }}
+            exit={{
+              opacity: 0,
+            }}
             onClick={() =>
-              setIsMobileMenuOpen(false)
+              setIsMobileMenuOpen(
+                false
+              )
             }
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-40 md:hidden"
           />
@@ -625,15 +1342,21 @@ export default function Kombucha() {
       {/* ============================================================= */}
 
       <Sidebar
-        isCollapsed={isCollapsed}
-        setIsCollapsed={setIsCollapsed}
+        isCollapsed={
+          isCollapsed
+        }
+        setIsCollapsed={
+          setIsCollapsed
+        }
         isMobileMenuOpen={
           isMobileMenuOpen
         }
         setIsMobileMenuOpen={
           setIsMobileMenuOpen
         }
-        activeImage={kombuchaImage}
+        activeImage={
+          kombuchaImage
+        }
         activeTitle="Kombucha Active"
       />
 
@@ -654,7 +1377,9 @@ export default function Kombucha() {
             <button
               className="md:hidden p-2 rounded-xl bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
               onClick={() =>
-                setIsMobileMenuOpen(true)
+                setIsMobileMenuOpen(
+                  true
+                )
               }
               aria-label="Open Navigation Menu"
             >
@@ -706,7 +1431,9 @@ export default function Kombucha() {
             <div className="relative">
 
               <select
-                value={selectedNode}
+                value={
+                  selectedNode
+                }
                 onChange={(e) =>
                   setSelectedNode(
                     e.target.value
@@ -714,9 +1441,11 @@ export default function Kombucha() {
                 }
                 className="appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 sm:px-4 py-2 sm:py-2.5 pr-7 sm:pr-8 rounded-2xl border border-red-200 outline-none cursor-pointer"
               >
+
                 <option value="KOMBUCHA_01">
                   KOMBUCHA_01
                 </option>
+
               </select>
 
               <ChevronDown
@@ -735,9 +1464,11 @@ export default function Kombucha() {
               <Bell size={18} />
 
               <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+
             </button>
 
           </div>
+
         </header>
 
         {/* =========================================================== */}
@@ -749,7 +1480,9 @@ export default function Kombucha() {
           <motion.div
             initial="hidden"
             animate="visible"
-            variants={staggerContainer}
+            variants={
+              staggerContainer
+            }
             className="max-w-7xl mx-auto space-y-6 sm:space-y-8"
           >
 
@@ -788,7 +1521,9 @@ export default function Kombucha() {
 
                     <input
                       type="date"
-                      value={selectedDate}
+                      value={
+                        selectedDate
+                      }
                       onChange={(e) =>
                         setSelectedDate(
                           e.target.value
@@ -812,6 +1547,7 @@ export default function Kombucha() {
                       }
                       className="appearance-none bg-red-50 text-red-600 font-bold text-xs px-3 py-2 pr-8 rounded-xl border border-red-200 outline-none cursor-pointer"
                     >
+
                       <option>
                         12 Jam
                       </option>
@@ -827,6 +1563,7 @@ export default function Kombucha() {
                       <option>
                         7 Hari
                       </option>
+
                     </select>
 
                     <ChevronDown
@@ -854,113 +1591,156 @@ export default function Kombucha() {
               {[
                 {
                   label: 'Suhu',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? latestTemperature !==
-                      null &&
-                      latestTemperature !==
-                        undefined
-                      ? `${formatValue(
-                          latestTemperature,
-                          1
-                        )}°C`
-                      : '-'
-                    : '-',
-                  icon: Thermometer,
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? latestTemperature !==
+                          null &&
+                        latestTemperature !==
+                          undefined
+                        ? `${formatValue(
+                            latestTemperature,
+                            1
+                          )}°C`
+                        : '-'
+                      : '-',
+
+                  icon:
+                    Thermometer,
+
                   color:
                     'text-orange-500',
+
                   status:
                     temperatureStatus,
                 },
 
                 {
-                  label: 'Gas (ADC)',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? formatValue(
-                        latestGas,
-                        0
-                      )
-                    : '-',
+                  label:
+                    'Gas (ADC)',
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? formatValue(
+                          latestGas,
+                          0
+                        )
+                      : '-',
+
                   icon: Wind,
-                  color: 'text-blue-500',
-                  status: null,
+
+                  color:
+                    'text-blue-500',
+
+                  status:
+                    gasStatus,
                 },
 
                 {
                   label: 'pH',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? formatValue(
-                        latestPh,
-                        2
-                      )
-                    : '-',
-                  icon: Droplet,
-                  color: 'text-red-600',
-                  status: phStatus,
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? formatValue(
+                          latestPh,
+                          2
+                        )
+                      : '-',
+
+                  icon:
+                    Droplet,
+
+                  color:
+                    'text-red-600',
+
+                  status:
+                    phStatus,
                 },
 
                 {
-                  label: 'Tekanan',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? latestPressure !==
-                      null &&
-                      latestPressure !==
-                        undefined
-                      ? `${formatValue(
-                          latestPressure,
-                          2
-                        )} kPa`
-                      : '-'
-                    : '-',
-                  icon: Gauge,
+                  label:
+                    'Tekanan',
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? latestPressure !==
+                          null &&
+                        latestPressure !==
+                          undefined
+                        ? `${formatValue(
+                            latestPressure,
+                            2
+                          )} kPa`
+                        : '-'
+                      : '-',
+
+                  icon:
+                    Gauge,
+
                   color:
                     'text-purple-500',
+
                   status:
                     pressureStatus,
                 },
 
                 {
                   label: 'TDS',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? latestTds !==
-                      null &&
-                      latestTds !==
-                        undefined
-                      ? `${formatValue(
-                          latestTds,
-                          0
-                        )} ppm`
-                      : '-'
-                    : '-',
-                  icon: Activity,
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? latestTds !==
+                          null &&
+                        latestTds !==
+                          undefined
+                        ? `${formatValue(
+                            latestTds,
+                            0
+                          )} ppm`
+                        : '-'
+                      : '-',
+
+                  icon:
+                    Activity,
+
                   color:
                     'text-indigo-500',
-                  status: tdsStatus,
+
+                  status:
+                    tdsStatus,
                 },
 
                 {
-                  label: 'Alkohol (MQ3)',
-                  value: loading
-                    ? '...'
-                    : apiAvailable
-                    ? formatValue(
-                        latestMq3,
-                        0
-                      )
-                    : '-',
+                  label:
+                    'Alkohol (MQ3)',
+
+                  value:
+                    loading
+                      ? '...'
+                      : apiAvailable
+                      ? formatValue(
+                          latestMq3,
+                          0
+                        )
+                      : '-',
+
                   icon: Zap,
+
                   color:
                     'text-amber-500',
-                  status: null,
+
+                  status:
+                    mq3Status,
                 },
               ].map(
                 (
@@ -973,7 +1753,9 @@ export default function Kombucha() {
 
                   return (
                     <div
-                      key={index}
+                      key={
+                        index
+                      }
                       className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between"
                     >
 
@@ -1004,6 +1786,7 @@ export default function Kombucha() {
                           <span
                             className={`${sensor.status.className} inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full`}
                           >
+
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${sensor.status.dotClassName}`}
                             />
@@ -1011,6 +1794,7 @@ export default function Kombucha() {
                             {
                               sensor.status.label
                             }
+
                           </span>
                         ) : (
                           <span className="inline-block mt-1 text-[10px] font-bold text-gray-500 bg-gray-50 px-2 py-0.5 rounded-full">
@@ -1057,7 +1841,9 @@ export default function Kombucha() {
 
                     <p className="text-xs text-gray-400">
                       {apiAvailable
-                        ? `Data monitoring (${timeSeries.length} titik pada grafik)`
+                        ? `Data monitoring (${timeSeries.length.toLocaleString(
+                            'id-ID'
+                          )} titik data)`
                         : 'Data belum tersedia'}
                     </p>
 
@@ -1142,15 +1928,14 @@ export default function Kombucha() {
                         Backend belum
                         tersedia
                       </div>
-                    ) : timeSeries.length ===
+                    ) : chartTimeSeries.length ===
                       0 ? (
                       <div className="w-full text-center text-xs text-gray-400">
                         Belum ada data
                         pada periode
                         yang dipilih
                       </div>
-                    ) : chartPointArray.length <
-                      1 ? (
+                    ) : !chartPoints ? (
                       <div className="w-full text-center text-xs text-gray-400">
                         Data grafik
                         tidak valid
@@ -1168,57 +1953,42 @@ export default function Kombucha() {
                             currentConfig.color
                           }
                           strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                           points={
                             chartPoints
                           }
+                          vectorEffect="non-scaling-stroke"
                         />
-
-                        {chartPointArray.map(
-                          (
-                            point,
-                            index
-                          ) => {
-
-                            const [
-                              cx,
-                              cy,
-                            ] =
-                              point.split(
-                                ','
-                              );
-
-                            return (
-                              <circle
-                                key={
-                                  index
-                                }
-                                cx={cx}
-                                cy={cy}
-                                r="3"
-                                fill="white"
-                                stroke={
-                                  currentConfig.color
-                                }
-                                strokeWidth="2"
-                              />
-                            );
-                          }
-                        )}
 
                       </svg>
                     )}
 
                   </div>
 
-                  <div className="relative z-10 flex justify-between pl-6 sm:pl-8 pr-2 text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pt-2 border-t border-gray-100">
+                  <div className="relative z-10 grid grid-cols-3 sm:grid-cols-7 gap-1 pl-6 sm:pl-8 pr-2 text-[9px] sm:text-[10px] font-bold text-gray-400 select-none pt-2 border-t border-gray-100">
 
-                    <span>
-                      Awal Data
-                    </span>
-
-                    <span>
-                      Terbaru
-                    </span>
+                    {chartTimeLabels.map(
+                      (
+                        label,
+                        index
+                      ) => (
+                        <span
+                          key={`${label}-${index}`}
+                          className={`truncate ${
+                            index === 0
+                              ? 'text-left'
+                              : index ===
+                                chartTimeLabels.length -
+                                  1
+                              ? 'text-right'
+                              : 'text-center'
+                          }`}
+                        >
+                          {label}
+                        </span>
+                      )
+                    )}
 
                   </div>
 
@@ -1266,13 +2036,17 @@ export default function Kombucha() {
 
                   <p className="text-sm font-bold text-gray-800 mb-1">
                     Node ID:{' '}
-                    {selectedNode}
+                    {
+                      selectedNode
+                    }
                   </p>
 
                   <p className="text-xs text-gray-400 mb-4">
                     Total Record:{' '}
                     {apiAvailable
-                      ? totalRows.toLocaleString('id-ID')
+                      ? totalRows.toLocaleString(
+                          'id-ID'
+                        )
                       : '-'}
                   </p>
 
@@ -1312,7 +2086,7 @@ export default function Kombucha() {
                       RSSI:{' '}
                       {apiAvailable
                         ? latestRssi !==
-                          null &&
+                            null &&
                           latestRssi !==
                             undefined
                           ? `${formatValue(
@@ -1356,6 +2130,7 @@ export default function Kombucha() {
           </motion.div>
 
         </div>
+
       </main>
     </div>
   );
